@@ -1,0 +1,101 @@
+import sys
+import os
+sys.path.append('/mnt/e/Symfa/airflow_analytics')
+
+from airflow import DAG
+from airflow.operators.python import PythonOperator
+from airflow.utils.dates import days_ago
+import os
+import requests
+import pendulum
+from datetime import datetime
+from typing import Any, Dict
+from common.common_functions import (
+    close_mongo_connection,
+    log_parser_finish,
+    log_parser_start,
+    save_parser_history,
+    handle_parser_error,
+    get_mongo_client
+)
+from common.update_facebook_access_token import update_facebook_access_token
+
+def get_instagram_followers_stats(**kwargs: Dict[str, Any]) -> None:
+    parser_name = 'Instagram Followers'
+    status = 'success'
+    proceed = True
+    start_time = pendulum.now()
+    log_parser_start(parser_name)
+
+    db = get_mongo_client()
+    followers_collection = db['instagram_followers']
+    data = None
+
+    try:
+        # Получаем токен из функции обновления токена
+        ig_access_token = update_facebook_access_token()
+        print(f"IG_ACCESS_TOKEN received: {ig_access_token}")
+
+        ig_business_account = os.getenv('IG_BUSINESS_ACCOUNT')
+        if not ig_access_token or not ig_business_account:
+            raise ValueError("Missing access token or business account ID")
+
+        url = f"https://graph.facebook.com/v15.0/{ig_business_account}"
+        params = {
+            "fields": "followers_count",
+            "access_token": ig_access_token
+        }
+
+        response = requests.get(url, params=params)
+        response.raise_for_status()
+        data = response.json()
+        print(f"Instagram API response: {data}")
+
+        followers_collection.insert_one({
+            "data": data,
+            "recordCreated": pendulum.now(),
+        })
+
+    except Exception as error:
+        result = handle_parser_error(error, parser_name, proceed)
+        status = result["status"]
+        proceed = result["proceed"]
+        if not proceed:
+            raise
+
+    finally:
+        if db and data:
+            save_parser_history(
+                db,
+                parser_name,
+                start_time,
+                'followers',
+                data.get('followers_count', 0),
+                status
+            )
+        close_mongo_connection(db.client)
+        log_parser_finish(parser_name)
+
+default_args = {
+    'owner': 'airflow',
+    'depends_on_past': False,
+    'email_on_failure': False,
+    'email_on_retry': False,
+}
+
+dag = DAG(
+    'instagram_followers',
+    default_args=default_args,
+    description='Fetch Instagram followers stats and save to MongoDB',
+    schedule_interval='@daily',
+    start_date=days_ago(1),
+)
+
+instagram_followers_task = PythonOperator(
+    task_id='get_instagram_followers_stats',
+    python_callable=get_instagram_followers_stats,
+    provide_context=True,
+    dag=dag,
+)
+
+instagram_followers_task

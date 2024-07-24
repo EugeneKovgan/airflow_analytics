@@ -1,0 +1,8 @@
+pymongo==3.11.0
+tikapi>=1.0.0
+apache-airflow-providers-mongo==3.0.0
+pytz==2023.3
+pendulum==2.1.2
+facebook-business==14.0.0
+python-dotenv==0.19.2
+
