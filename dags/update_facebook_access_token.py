@@ -6,7 +6,6 @@ from airflow import DAG
 from airflow.operators.python import PythonOperator
 from airflow.utils.dates import days_ago
 from pymongo import MongoClient
-import os
 import requests
 import pendulum
 from datetime import datetime
@@ -37,7 +36,7 @@ def update_facebook_access_token(**kwargs: Dict[str, Any]) -> None:
     db = get_mongo_client()
     settings_collection = db['settings']
     current_access_token_record = settings_collection.find_one({'name': 'instagramAccess'})
-    
+
     old_access_token = ''
     old_expiration_date = ''
 
@@ -48,7 +47,7 @@ def update_facebook_access_token(**kwargs: Dict[str, Any]) -> None:
         ).to_datetime_string()
 
     is_token_expired = not current_access_token_record or (
-        pendulum.now().int_timestamp > current_access_token_record['value']['updatedIn'] + 
+        pendulum.now().int_timestamp > current_access_token_record['value']['updatedIn'] +
         current_access_token_record['value']['expiresIn'] - 60 * 60 * 24 * 30
     )
 
