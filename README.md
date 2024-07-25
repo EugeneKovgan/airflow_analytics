@@ -23,10 +23,10 @@ pip install -r requirements.txt
 
 <!-- start -->
 source airflow_venv/bin/activate
-airflow scheduler
+airflow webserver --port 8081
 
 source airflow_venv/bin/activate
-airflow webserver --port 8081
+airflow scheduler
 
 <!-- quick restart -->
 pkill -f airflow
