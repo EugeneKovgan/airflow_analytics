@@ -56,9 +56,24 @@ def get_instagram_reels_stats(**kwargs: Dict[str, Any]) -> None:
 
         url = f"https://graph.facebook.com/v14.0/{ig_business_account}/media"
         params = {
-            'fields': 'like_count,comments_count,media_type,timestamp,media_product_type,shortcode,permalink,caption,thumbnail_url,is_comment_enabled,is_shared_to_feed,text,media_url',
+            'fields': 'like_count,comments_count,media_type,timestamp,media_product_type,shortcode,permalink,caption,thumbnail_url,is_comment_enabled,is_shared_to_feed,text,media_url,profile_picture_url,username',
             'access_token': ig_access_token
         }
+
+        followers_url = f"https://graph.facebook.com/v14.0/{ig_business_account}"
+        followers_params = {
+            'fields': 'followers_count,id,profile_picture_url',
+            'access_token': ig_access_token
+        }
+
+        followers_response = requests.get(followers_url, params=followers_params)
+        if followers_response.status_code != 200:
+            raise Exception(f"API request for followers count failed with status {followers_response.status_code}: {followers_response.json()}")
+
+        followers_data = followers_response.json()
+        followers_count = followers_data.get('followers_count', 0)
+        profile_picture_id = followers_data.get('id', '')
+        profile_picture_url = followers_data.get('profile_picture_url', '')
 
         while True:
             response = requests.get(url, params=params)
@@ -66,32 +81,36 @@ def get_instagram_reels_stats(**kwargs: Dict[str, Any]) -> None:
                 raise Exception(f"API request failed with status {response.status_code}: {response.json()}")
 
             media = response.json()
-            reels = parse_reels_data(media['data'])
+            reels = parse_reels_data(media['data'], ig_access_token)
 
             if reels:
                 for reel in reels:
                     id = reel['id']
-                    if id not in reels_ids:
-                        # Insert a new reel
-                        new_reel_post = {
-                            "_id": id,
-                            "recordCreated": datetime.now(),
-                            "tags": None,
-                            "video": {
-                                "id": id,
-                                "author":reel.get('username'),
-                                "desc": reel.get('caption', '').split('\n')[0],
-                                "type": reel['media_type'],
-                                "cover": reel['thumbnail_url'],
-                                "createTime": pendulum.parse(reel['timestamp']).int_timestamp,
-                                "url": reel['permalink'],
-                                "text": reel.get('text', ''),
-                                "profile_picture_url": reel.get('profile_picture_url', ''),
-                                "image_url": reel.get('media_url', '')
-                            }
+                    # Upsert a new reel or update existing one
+                    new_reel_post = {
+                        "_id": id,
+                        "platform": "instagram",
+                        "recordCreated": datetime.now(),
+                        "tags": None,
+                        "video": {
+                            "id": id,
+                            "author": reel.get('username'),
+                            "desc": reel.get('caption', '').split('\n')[0],
+                            "type": reel['media_type'],
+                            "cover": reel['thumbnail_url'],
+                            "createTime": pendulum.parse(reel['timestamp']).int_timestamp,
+                            "url": reel['permalink'],
+                            "text": reel.get('text', ''),
+                            "profile_picture_url": {
+                                "profile_picture_url": profile_picture_url,
+                                "followers_count": followers_count,
+                                "id": profile_picture_id
+                            },
+                            "image_url": reel.get('media_url', '')
                         }
-                        reels_collection.insert_one(new_reel_post)
-                        print(f"New Video Discovered: {new_reel_post['video']['desc']}")
+                    }
+                    reels_collection.update_one({"_id": id}, {"$set": new_reel_post}, upsert=True)
+                    print(f"Video Processed: {new_reel_post['video']['desc']}")
 
                     # Insert reel stats
                     reels_stats_collection.insert_one({
@@ -108,7 +127,10 @@ def get_instagram_reels_stats(**kwargs: Dict[str, Any]) -> None:
                             "is_comment_enabled": reel['is_comment_enabled'],
                             "is_shared_to_feed": reel['is_shared_to_feed'],
                             "shortcode": reel['shortcode'],
-                            "followers": reel.get('followers_count', 0),
+                            "followers": {
+                                "followers_count": followers_count,
+                                "id": profile_picture_id
+                            },
                             "profile_picture_url": reel.get('profile_picture_url', ''),
                         }
                     })
@@ -138,14 +160,21 @@ def get_instagram_reels_stats(**kwargs: Dict[str, Any]) -> None:
         close_mongo_connection(db.client)
         log_parser_finish(parser_name)
 
-def parse_reels_data(media):
+def parse_reels_data(media, access_token):
     data = []
     for item in media:
         if item['media_type'] == 'VIDEO' and item['media_product_type'] == 'REELS':
-            metrics = item.get('insights', [])
             item_data = item
-            for metric in metrics:
-                item_data[metric['name']] = metric['values'][0]['value']
+            metrics_url = f"https://graph.facebook.com/v14.0/{item['id']}/insights"
+            metrics_params = {
+                'metric': 'reach,saved,shares,plays,total_interactions',
+                'access_token': access_token
+            }
+            metrics_response = requests.get(metrics_url, params=metrics_params)
+            if metrics_response.status_code == 200:
+                metrics = metrics_response.json().get('data', [])
+                for metric in metrics:
+                    item_data[metric['name']] = metric['values'][0]['value']
             data.append(item_data)
     return data
 
@@ -160,7 +189,7 @@ dag = DAG(
     'instagram_reels_stats',
     default_args=default_args,
     description='Fetch Instagram Reels stats and save to MongoDB',
-    schedule_interval='@daily',
+    schedule_interval='0 8,15,21 * * *',  # Cron expression for scheduling
     start_date=days_ago(1),
 )
 
