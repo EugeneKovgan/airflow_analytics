@@ -9,7 +9,7 @@ sys.path.append('/mnt/e/Symfa/airflow_analytics')
 from pymongo import MongoClient
 import pendulum
 
-def get_facebook_access_token() -> str:
+def get_instagram_access_token() -> str:
     db = get_mongo_client()
     settings_collection = db['settings']
     current_access_token_record = settings_collection.find_one({'name': 'instagramAccess'})

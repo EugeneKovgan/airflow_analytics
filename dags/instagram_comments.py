@@ -18,7 +18,7 @@ from common.common_functions import (
     handle_parser_error,
     get_mongo_client
 )
-from common.get_facebook_access_token import get_facebook_access_token
+from common.get_instagram_access_token import get_instagram_access_token
 
 def fetch_video_ids(db: MongoClient) -> list:
     posts_collection = db['instagram_reels']
@@ -65,7 +65,7 @@ def get_instagram_comments(**kwargs: Dict[str, Any]) -> None:
     total_comments_count = 0
 
     try:
-        ig_access_token = get_facebook_access_token()
+        ig_access_token = get_instagram_access_token()
         video_ids = fetch_video_ids(db)
 
         for video_id in video_ids:

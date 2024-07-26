@@ -5,22 +5,21 @@ sys.path.append('/mnt/e/Symfa/airflow_analytics')
 from airflow import DAG
 from airflow.operators.python import PythonOperator
 from airflow.utils.dates import days_ago
-from pymongo import MongoClient
 import requests
 import pendulum
 from datetime import datetime
 from typing import Any, Dict
 from common.common_functions import (
+    get_mongo_client,
     close_mongo_connection,
     log_parser_finish,
     log_parser_start,
     save_parser_history,
     handle_parser_error,
-    get_mongo_client
 )
 
-def update_facebook_access_token(**kwargs: Dict[str, Any]) -> None:
-    parser_name = 'Update Facebook Access Token'
+def update_instagram_access_token(**kwargs: Dict[str, Any]) -> None:
+    parser_name = 'Update instagram Access Token'
     status = 'success'
     proceed = True
     start_time = pendulum.now()
@@ -54,7 +53,7 @@ def update_facebook_access_token(**kwargs: Dict[str, Any]) -> None:
     if is_token_expired:
         auth_token = old_access_token or auth_code
         token_exchange_url = (
-            f"https://graph.facebook.com/v10.0/oauth/access_token?"
+            f"https://graph.instagram.com/v10.0/oauth/access_token?"
             f"client_id={app_id}&client_secret={app_secret}&grant_type=fb_exchange_token&fb_exchange_token={auth_token}"
         )
         try:
@@ -87,7 +86,7 @@ def update_facebook_access_token(**kwargs: Dict[str, Any]) -> None:
             )
 
             save_token_update_history(
-                db, 'Facebook', old_access_token, new_access_token, old_expiration_date, new_expiration_date, datetime.utcnow(), 'Success'
+                db, 'instagram', old_access_token, new_access_token, old_expiration_date, new_expiration_date, datetime.utcnow(), 'Success'
             )
 
             os.environ['IG_ACCESS_TOKEN'] = new_access_token
@@ -96,7 +95,7 @@ def update_facebook_access_token(**kwargs: Dict[str, Any]) -> None:
             status = 'failure'
             proceed = False
             save_token_update_history(
-                db, 'Facebook', old_access_token, '', old_expiration_date, '', datetime.utcnow(), 'Failed'
+                db, 'instagram', old_access_token, '', old_expiration_date, '', datetime.utcnow(), 'Failed'
             )
             handle_parser_error(error, parser_name, proceed)
 
@@ -123,16 +122,16 @@ default_args = {
 }
 
 dag = DAG(
-    'update_facebook_access_token',
+    'instagram_update_access_token',
     default_args=default_args,
-    description='Fetch and update Facebook access token',
+    description='Fetch and update instagram access token',
     schedule_interval='@daily',
     start_date=days_ago(1),
 )
 
 update_token_task = PythonOperator(
-    task_id='update_facebook_access_token',
-    python_callable=update_facebook_access_token,
+    task_id='update_instagram_access_token',
+    python_callable=update_instagram_access_token,
     provide_context=True,
     dag=dag,
 )

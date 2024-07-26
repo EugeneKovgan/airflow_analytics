@@ -17,7 +17,7 @@ from common.common_functions import (
     handle_parser_error,
     get_mongo_client
 )
-from common.get_facebook_access_token import get_facebook_access_token
+from common.get_instagram_access_token import get_instagram_access_token
 
 def get_instagram_followers_stats(**kwargs: Dict[str, Any]) -> None:
     parser_name = 'Instagram Followers'
@@ -31,7 +31,7 @@ def get_instagram_followers_stats(**kwargs: Dict[str, Any]) -> None:
     data = None
 
     try:
-        ig_access_token = get_facebook_access_token()
+        ig_access_token = get_instagram_access_token()
         print(f"IG_ACCESS_TOKEN received: {ig_access_token}")
 
         ig_business_account = os.getenv('IG_BUSINESS_ACCOUNT')
