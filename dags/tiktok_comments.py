@@ -6,10 +6,17 @@ from airflow import DAG
 from airflow.operators.python import PythonOperator
 from airflow.utils.dates import days_ago
 import pendulum
-from common.common_functions import close_mongo_connection, get_mongo_client, save_parser_history, handle_parser_error, log_parser_start, log_parser_finish, get_tikapi_client
-from typing import Any, Dict
-
-MAX_RETRIES = 3
+from pymongo import MongoClient
+from common.common_functions import (
+    close_mongo_connection,
+    handle_parser_error,
+    log_parser_finish,
+    log_parser_start,
+    save_parser_history,
+    get_mongo_client,
+    get_tikapi_client
+)
+from typing import Any, Dict, List
 
 def get_tiktok_comments(**kwargs: Dict[str, Any]) -> None:
     parser_name = 'Tiktok Comments'
@@ -18,76 +25,64 @@ def get_tiktok_comments(**kwargs: Dict[str, Any]) -> None:
     start_time = pendulum.now()
     log_parser_start(parser_name)
 
-    db = get_mongo_client()
     total_comments_count = 0
 
     try:
-        user = get_tikapi_client()
-        posts_collection = db['tiktok_posts']
-        comments_collection = db['tiktok_comments']
+        db = get_mongo_client()
+        tiktok_client = get_tikapi_client()
 
-        video_ids = fetch_video_ids(posts_collection)
-        
+        video_ids = fetch_video_ids(db)
         for video_id in video_ids:
             if not proceed:
                 break
-            attempt = 0
-            while attempt < MAX_RETRIES:
-                try:
-                    total_comments_count += process_video_comments(user, comments_collection, video_id, parser_name)
-                    break  # if success, exit the retry loop
-                except Exception as e:
-                    attempt += 1
-                    if attempt >= MAX_RETRIES:
-                        result = handle_parser_error(e, parser_name, MAX_RETRIES)
-                        proceed = result["proceed"]
-                        status = result["status"]
-                        break  # if max retries reached, exit the retry loop
-                    else:
-                        result = handle_parser_error(e, parser_name, MAX_RETRIES)
-                        proceed = result["proceed"]
-                        status = result["status"]
-                        if not proceed:
-                            break  # if handle_parser_error suggests not to proceed, exit the retry loop
+            try:
+                total_comments_count += process_video_comments(tiktok_client, db, video_id)
+            except Exception as error:
+                result = handle_parser_error(error, parser_name, proceed)
+                proceed = result["proceed"]
+                status = result["status"]
+                if not proceed:
+                    break
+                print(f"{parser_name}: Error processing comments for video {video_id}: {error}")
 
     except Exception as error:
-        result = handle_parser_error(error, parser_name, MAX_RETRIES)
+        result = handle_parser_error(error, parser_name, proceed)
         status = result["status"]
         proceed = result["proceed"]
         print(f"{parser_name}: Error: {error}")
+
     finally:
         if db:
             save_parser_history(db, parser_name, start_time, 'comments', total_comments_count, status)
-            close_mongo_connection(db.client)
-            log_parser_finish(parser_name)
+        close_mongo_connection(db.client)
+        log_parser_finish(parser_name)
 
+def fetch_video_ids(db: Any) -> List[str]:
+    posts_collection = db['tiktok_posts']
+    return list(posts_collection.distinct('video.id'))
 
-def fetch_video_ids(posts_collection) -> list:
-    return posts_collection.distinct('video.id')
-
-def process_video_comments(user, comments_collection, video_id, parser_name) -> int:
+def process_video_comments(tiktok_client: Any, db: Any, video_id: str) -> int:
+    user = tiktok_client.user({ 'accountKey': os.getenv('TIKAPI_AUTHKEY') })
     total_comments_count = 0
-    response = user.posts.comments.list(media_id=video_id)
-    comments = response.json().get('comments', [])
-    for comment in comments:
-        try:
-            total_comments_count += process_comment(user, comments_collection, comment, parser_name)
-        except Exception as e:
-            result = handle_parser_error(e, parser_name, MAX_RETRIES)
-            if result["proceed"]:
-                try:
-                    total_comments_count += process_comment(user, comments_collection, comment, parser_name)
-                except Exception as e_inner:
-                    handle_parser_error(e_inner, parser_name, MAX_RETRIES)
-            else:
-                handle_parser_error(e, parser_name, MAX_RETRIES)
+
+    try:
+        response = user.posts.comments.list({ 'media_id': video_id })
+        if 'comments' in response.json():
+            comments_collection = db['tiktok_comments']
+            for comment in response.json()['comments']:
+                total_comments_count += process_comment(user, comments_collection, comment)
+        else:
+            print(f"No comments found for video {video_id}")
+    except Exception as error:
+        raise error
+
     return total_comments_count
 
-def process_comment(user, comments_collection, comment, parser_name) -> int:
-    existing_comment = comments_collection.find_one({'data.cid': comment['cid']})
+def process_comment(user: Any, comments_collection: Any, comment: Any) -> int:
+    existing_comment = comments_collection.find_one({ 'data.cid': comment['cid'] })
 
     if not existing_comment:
-        reply_comments = fetch_reply_comments(user, comment) if comment['reply_comment_total'] > 0 else []
+        reply_comments = fetch_reply_comments(user, comment) if comment.get('reply_comment_total', 0) > 0 else []
         comments_collection.insert_one({
             'data': comment,
             'recordCreated': pendulum.now(),
@@ -95,25 +90,27 @@ def process_comment(user, comments_collection, comment, parser_name) -> int:
         })
         return 1
     else:
-        if existing_comment['data']['reply_comment_total'] != comment['reply_comment_total']:
-            updated_reply_comments = fetch_reply_comments(user, comment) if comment['reply_comment_total'] > 0 else []
+        if existing_comment['data'].get('reply_comment_total') != comment.get('reply_comment_total'):
+            updated_reply_comments = fetch_reply_comments(user, comment) if comment.get('reply_comment_total', 0) > 0 else []
             comments_collection.replace_one(
-                {'data.cid': comment['cid']},
+                { 'data.cid': comment['cid'] },
                 {
                     'data': comment,
                     'recordCreated': pendulum.now(),
                     'reply': updated_reply_comments,
-                }
+                },
             )
         else:
             print(f"Skipping update for comment with cid {comment['cid']}. reply_comment_total has not changed.")
         return 0
 
-def fetch_reply_comments(user, comment) -> list:
-    response = user.posts.comments.replies(media_id=comment['aweme_id'], comment_id=comment['cid'])
-    
-    print(f"Fetched reply comments for comment {comment['cid']}: {response.json().get('comments', [])}")
-    return response.json().get('comments', [])
+def fetch_reply_comments(user: Any, comment: Any) -> List[Dict[str, Any]]:
+    response_reply = user.posts.comments.replies({
+        'media_id': comment['aweme_id'],
+        'comment_id': comment['cid'],
+    })
+    print(f"Fetched reply comments for comment {comment['cid']}: {response_reply.json()['comments']}")
+    return response_reply.json()['comments']
 
 default_args = {
     'owner': 'airflow',
@@ -126,12 +123,13 @@ dag = DAG(
     'tiktok_comments',
     default_args=default_args,
     description='Fetch TikTok comments and save to MongoDB',
-    schedule_interval=None,
+    schedule_interval='35 7,19 * * *',   # Cron expression for scheduling
     start_date=days_ago(1),
+    catchup=False,
 )
 
 tiktok_comments_task = PythonOperator(
-    task_id='tiktok_comments',
+    task_id='get_tiktok_comments',
     python_callable=get_tiktok_comments,
     provide_context=True,
     dag=dag,

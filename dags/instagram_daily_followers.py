@@ -28,6 +28,7 @@ def recalculate_instagram_daily_followers(**kwargs: Dict[str, Any]) -> None:
 
     db = get_mongo_client()
     total_followers = 0
+    history_saved = False
 
     try:
         followers_stats_collection = db['instagram_followers']
@@ -66,7 +67,10 @@ def recalculate_instagram_daily_followers(**kwargs: Dict[str, Any]) -> None:
             current_stat_date = parse_datetime(followers_stats[i]['recordCreated'])
 
             if overall_accumulator == 0:
-                speed = (current_stat_num - previous_stat_num) / (current_stat_date - previous_stat_date).total_seconds()
+                delta_seconds = (current_stat_date - previous_stat_date).total_seconds()
+                if delta_seconds == 0:
+                    raise ValueError("Zero division error: current_stat_date and previous_stat_date are the same.")
+                speed = (current_stat_num - previous_stat_num) / delta_seconds
                 overall_accumulator = current_stat_num - (current_stat_date - date).total_seconds() * speed
                 first_tracking_followers_count = overall_accumulator
 
@@ -82,11 +86,13 @@ def recalculate_instagram_daily_followers(**kwargs: Dict[str, Any]) -> None:
 
                 i += 1
 
-            speed = (current_stat_num - previous_stat_num) / (current_stat_date - previous_stat_date).total_seconds()
-            if speed > 0:
-                end_of_day_reminder = speed * (next_day - previous_stat_date).total_seconds()
-                day_accumulator += end_of_day_reminder
-                overall_accumulator += end_of_day_reminder
+            delta_seconds = (current_stat_date - previous_stat_date).total_seconds()
+            if delta_seconds != 0:
+                speed = (current_stat_num - previous_stat_num) / delta_seconds
+                if speed > 0:
+                    end_of_day_reminder = speed * (next_day - previous_stat_date).total_seconds()
+                    day_accumulator += end_of_day_reminder
+                    overall_accumulator += end_of_day_reminder
 
             previous_stat_date = next_day
             previous_stat_num = overall_accumulator
@@ -135,7 +141,9 @@ def recalculate_instagram_daily_followers(**kwargs: Dict[str, Any]) -> None:
             raise
     finally:
         if db:
-            save_parser_history(db, parser_name, start_time, 'followers', total_followers, status)
+            if not history_saved:
+                save_parser_history(db, parser_name, start_time, 'followers', total_followers, status)
+                history_saved = True
         close_mongo_connection(db.client)
         log_parser_finish(parser_name)
 
@@ -150,8 +158,9 @@ dag = DAG(
     'instagram_daily_followers',
     default_args=default_args,
     description='Recalculate Instagram daily followers',
-    schedule_interval='@daily',
+    schedule_interval='25 8,15,21 * * *',  # Cron expression for scheduling
     start_date=days_ago(1),
+    catchup=False, 
 )
 
 recalculate_instagram_daily_followers_task = PythonOperator(

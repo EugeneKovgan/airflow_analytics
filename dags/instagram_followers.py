@@ -93,8 +93,9 @@ dag = DAG(
     'instagram_followers',
     default_args=default_args,
     description='Fetch Instagram followers stats and save to MongoDB',
-    schedule_interval='@daily',
+    schedule_interval='30 8,15,21 * * *',  # Cron expression for scheduling
     start_date=days_ago(1),
+    catchup=False,
 )
 
 instagram_followers_task = PythonOperator(

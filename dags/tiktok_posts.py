@@ -138,8 +138,9 @@ dag = DAG(
     'tiktok_posts',
     default_args=default_args,
     description='Fetch TikTok posts stats and save to MongoDB',
-    schedule_interval=None,
+    schedule_interval='0 3,7,11,15,19 * * *',  # Cron expression for scheduling
     start_date=days_ago(1),
+    catchup=False,
 )
 
 tiktok_posts_task = PythonOperator(

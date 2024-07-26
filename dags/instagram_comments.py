@@ -32,25 +32,28 @@ def process_video_comments(db: MongoClient, video_id: str, access_token: str) ->
         "access_token": access_token
     }
 
-    response = requests.get(url, params=params)
-    response.raise_for_status()
-    comments = response.json().get('data', [])
-
     comments_count = 0
+    while url:
+        response = requests.get(url, params=params)
+        response.raise_for_status()
+        comments = response.json().get('data', [])
+        paging = response.json().get('paging', {})
 
-    for comment in comments:
-        comment['aweme_id'] = video_id
-        existing_comment = comments_collection.find_one({'data.id': comment['id']})
+        for comment in comments:
+            comment['aweme_id'] = video_id
+            existing_comment = comments_collection.find_one({'data.id': comment['id']})
 
-        if existing_comment:
-            comments_collection.update_one(
-                {'data.id': comment['id']},
-                {"$set": {"data": comment, "recordUpdated": pendulum.now()}}
-            )
-        else:
-            comments_collection.insert_one({"data": comment, "recordCreated": pendulum.now()})
+            if existing_comment:
+                comments_collection.update_one(
+                    {'data.id': comment['id']},
+                    {"$set": {"data": comment, "recordUpdated": pendulum.now()}}
+                )
+            else:
+                comments_collection.insert_one({"data": comment, "recordCreated": pendulum.now()})
 
-        comments_count += 1
+            comments_count += 1
+
+        url = paging.get('next')
 
     return comments_count
 
@@ -102,8 +105,9 @@ dag = DAG(
     'instagram_comments',
     default_args=default_args,
     description='Fetch Instagram comments and save to MongoDB',
-    schedule_interval='@daily',
+    schedule_interval='35 8,21 * * *',  # Cron expression for scheduling
     start_date=days_ago(1),
+    catchup=False, 
 )
 
 instagram_comments_task = PythonOperator(
