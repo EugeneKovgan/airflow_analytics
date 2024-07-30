@@ -2,72 +2,124 @@ from airflow import DAG
 from airflow.operators.python import PythonOperator
 from airflow.utils.dates import days_ago
 import pendulum
-from pymongo import UpdateOne
+from datetime import datetime
 from typing import Any, Dict
+
 from common.common_functions import (
-    close_mongo_connection, log_parser_finish, save_parser_history,
-    get_mongo_client, parse_datetime, handle_parser_error, log_parser_start
+    close_mongo_connection,
+    log_parser_finish,
+    log_parser_start,
+    save_parser_history,
+    handle_parser_error,
+    get_mongo_client,
+    parse_datetime
 )
 
 def recalculate_tiktok_daily_followers(**kwargs: Dict[str, Any]) -> None:
     parser_name = 'Tiktok Daily Followers'
     status = 'success'
     start_time = pendulum.now()
-    total_followers = 0
     log_parser_start(parser_name)
 
+    db = get_mongo_client()
+    total_followers = 0
+    history_saved = False
+
     try:
-        db = get_mongo_client()
         followers_stats_collection = db['tiktok_followers']
         daily_followers_collection = db['tiktok_daily_followers']
         posts_stats_collection = db['tiktok_daily_stats']
+        collections = db.list_collection_names()
 
-        if 'tiktok_daily_followers' in db.list_collection_names():
+        if 'tiktok_daily_followers' in collections:
             daily_followers_collection.drop()
 
-        followers_stats = list(followers_stats_collection.find().sort('recordCreated', 1))
+        followers_stats = list(followers_stats_collection.find({}).sort("recordCreated", 1))
+        print(f"Total followers_stats records fetched: {len(followers_stats)}")  # Debugging
         if not followers_stats:
-            raise ValueError("No followers stats found in the collection")
+            raise ValueError("No follower stats found")
 
-        first_stat = followers_stats[0]
-        previous_stat_num = first_stat['data']['follower_num']['value']
-        previous_stat_date = parse_datetime(first_stat['recordCreated'])
+        first_num = followers_stats[0]['data']['follower_num']['value']
+        first_date = followers_stats[0]['recordCreated']
+        print(f"First num: {first_num}, First date: {first_date}")  # Debugging
 
-        overall_accumulator = previous_stat_num
+        previous_stat_num = first_num
+        previous_stat_date = parse_datetime(first_date)
+
+        today = pendulum.today()
+        overall_accumulator = 0
+
         days = []
+
         first_tracking_followers_count = 0
 
-        for stat in followers_stats[1:]:
-            current_stat_num = stat['data']['follower_num']['value']
-            current_stat_date = parse_datetime(stat['recordCreated'])
+        i = 1
+        date = parse_datetime(first_date).start_of('day')
 
-            if overall_accumulator == previous_stat_num:
-                duration = (current_stat_date - previous_stat_date).total_seconds()
-                daily_followers = (current_stat_num - previous_stat_num) / duration
-                overall_accumulator = current_stat_num - duration * daily_followers
+        while date < today and i < len(followers_stats):
+            next_day = date.add(days=1)
+            day_accumulator = 0
+
+            current_stat_num = followers_stats[i]['data']['follower_num']['value']
+            current_stat_date = parse_datetime(followers_stats[i]['recordCreated'])
+            print(f"Processing date: {date}, current_stat_num: {current_stat_num}")  # Debugging
+
+            if overall_accumulator == 0:
+                delta_seconds = (current_stat_date - previous_stat_date).total_seconds()
+                if delta_seconds == 0:
+                    raise ValueError("Zero division error: current_stat_date and previous_stat_date are the same.")
+                speed = (current_stat_num - previous_stat_num) / delta_seconds
+                overall_accumulator = current_stat_num - (current_stat_date - date).total_seconds() * speed
                 first_tracking_followers_count = overall_accumulator
 
-            duration = (current_stat_date - previous_stat_date).total_seconds()
-            daily_followers = (current_stat_num - previous_stat_num) / duration
-            followers_for_day = daily_followers * duration
+            while date.start_of('day') == current_stat_date.start_of('day') and i < len(followers_stats):
+                current_stat_num = followers_stats[i]['data']['follower_num']['value']
+                current_stat_date = parse_datetime(followers_stats[i]['recordCreated'])
+
+                day_accumulator += current_stat_num - overall_accumulator
+                overall_accumulator = current_stat_num
+
+                previous_stat_date = current_stat_date
+                previous_stat_num = current_stat_num
+
+                i += 1
+
+            delta_seconds = (current_stat_date - previous_stat_date).total_seconds()
+            if delta_seconds != 0:
+                speed = (current_stat_num - previous_stat_num) / delta_seconds
+                if speed > 0:
+                    end_of_day_reminder = speed * (next_day - previous_stat_date).total_seconds()
+                    day_accumulator += end_of_day_reminder
+                    overall_accumulator += end_of_day_reminder
+
+            previous_stat_date = next_day
+            previous_stat_num = overall_accumulator
 
             days.append({
-                '_id': current_stat_date.format('YYYY-MM-DD'),
-                'followers': followers_for_day
+                '_id': date.format('YYYY-MM-DD'),
+                'followers': day_accumulator,
             })
+            total_followers += day_accumulator
 
-            previous_stat_num = current_stat_num
-            previous_stat_date = current_stat_date
-            overall_accumulator = current_stat_num
+            date = next_day
+
+        print(f"Total days computed: {len(days)}")  # Debugging
 
         post_days = list(posts_stats_collection.aggregate([
-            {'$match': {'date': {'$lt': parse_datetime(first_stat['recordCreated']).format('YYYY-MM-DD')}}},
-            {'$group': {'_id': '$date', 'views': {'$sum': '$play_count'}}},
-            {'$sort': {'_id': -1}}
+            { '$match': { 'date': { '$lt': parse_datetime(first_date).format('YYYY-MM-DD') } } },
+            {
+                '$group': {
+                    '_id': '$date',
+                    'views': { '$sum': '$play_count' },
+                },
+            },
+            {
+                '$sort': { "_id": -1 },
+            },
         ]))
 
         views_to_distribute = sum(day['views'] for day in post_days)
-        followers_by_views = first_tracking_followers_count / views_to_distribute
+        followers_by_views = first_tracking_followers_count / views_to_distribute if views_to_distribute else 0
 
         for day in post_days:
             followers = followers_by_views * day['views']
@@ -77,18 +129,19 @@ def recalculate_tiktok_daily_followers(**kwargs: Dict[str, Any]) -> None:
             })
             total_followers += followers
 
-        operations = [UpdateOne({'_id': day['_id']}, {'$set': day}, upsert=True) for day in days]
-        daily_followers_collection.bulk_write(operations, ordered=False)
+        if not days:
+            raise ValueError("No days data to insert")
 
+        daily_followers_collection.insert_many(days)
     except Exception as error:
         status = handle_parser_error(error, parser_name)
-        print(f"Tiktok Daily Followers: Error during processing: {str(error)}")
-        raise
     finally:
         if db:
-            save_parser_history(db, parser_name, start_time, 'followers', total_followers, status)
-            close_mongo_connection(db.client)
-            log_parser_finish(parser_name)
+            if not history_saved:
+                save_parser_history(db, parser_name, start_time, 'followers', total_followers, status)
+                history_saved = True
+        close_mongo_connection(db.client)
+        log_parser_finish(parser_name)
 
 default_args = {
     'owner': 'airflow',
@@ -106,11 +159,11 @@ dag = DAG(
     catchup=False,
 )
 
-tiktok_followers_task = PythonOperator(
+recalculate_tiktok_daily_followers_task = PythonOperator(
     task_id='recalculate_tiktok_daily_followers',
     python_callable=recalculate_tiktok_daily_followers,
     provide_context=True,
     dag=dag,
 )
 
-tiktok_followers_task
+recalculate_tiktok_daily_followers_task

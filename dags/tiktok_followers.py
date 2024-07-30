@@ -1,65 +1,79 @@
 from airflow import DAG
 from airflow.operators.python import PythonOperator
 from airflow.utils.dates import days_ago
+from airflow.models import Variable
+from common.common_functions import close_mongo_connection, get_mongo_client, handle_parser_error, log_parser_finish, log_parser_start 
 import pendulum
-from common.common_functions import (
-    close_mongo_connection,
-    handle_parser_error,
-    log_parser_finish,
-    log_parser_start,
-    save_parser_history,
-    get_mongo_client,
-    get_tikapi_client
-)
-from typing import Any, Dict
+from tikapi import TikAPI
+from typing import Any
 
-MAX_RETRIES = 3
 
-def fetch_tiktok_followers_data(tiktok_client, parser_name):
-    user = get_tikapi_client()
-    data = None
-    retry_count = MAX_RETRIES
-    while retry_count:
-        try:
-            data = user.analytics({
-                "type": "followers"
-            })
-            break
-        except Exception as e:
-            retry_count -= 1
-            result = handle_parser_error(e, parser_name)
-            if result == 'error':
-                raise e
-    return data
-
-def save_followers_data(db, data):
-    followers_collection = db.collection('tiktok_followers')
-    followers_collection.insert_one({
-        "data": data.json(),
-        "recordCreated": pendulum.now()
-    })
-
-def get_tiktok_followers_stats(**kwargs: Dict[str, Any]) -> None:
+def get_tiktok_followers_stats(**kwargs: Any) -> None:
     parser_name = 'Tiktok Followers'
     status = 'success'
     start_time = pendulum.now()
     log_parser_start(parser_name)
 
-    db = get_mongo_client()
     data = None
+    api_key = Variable.get("TIKAPI_KEY")
+    auth_key = Variable.get("TIKAPI_AUTHKEY")
+
+    db = get_mongo_client()
 
     try:
-        tiktok_client = get_tikapi_client()
-        data = fetch_tiktok_followers_data(tiktok_client, parser_name)
+        tiktok_client = TikAPI(api_key)
+        user = tiktok_client.user(accountKey=auth_key)
+        data = fetch_tiktok_followers_data(user, parser_name)
         if data:
             save_followers_data(db, data)
     except Exception as error:
         status = handle_parser_error(error, parser_name)
+        print(f"{parser_name}: Error during processing: {error}")
     finally:
-        total_followers = data.json().get('follower_num', {}).get('value', 0) if data else 0
-        save_parser_history(db, parser_name, start_time, 'followers', total_followers, status)
+        total_followers = data.get('follower_num', {}).get('value', 0) if data else 0
+        end_time = pendulum.now()
+        time_taken = (end_time - start_time).total_seconds()
+        save_parser_history(db, parser_name, start_time, total_followers, status, time_taken)
         close_mongo_connection(db.client)
         log_parser_finish(parser_name)
+
+def fetch_tiktok_followers_data(user: Any, parser_name: str) -> dict:
+    data = None
+    retry_count = 3
+    while retry_count:
+        try:
+            response = user.analytics(type='followers')
+            data = response.json()
+            print(f"Fetched TikTok followers data: {data}")
+            break
+        except Exception as e:
+            retry_count -= 1
+            status = handle_parser_error(e, parser_name)
+            if status != 'success' or retry_count == 0:
+                raise e
+    return data
+
+def save_followers_data(db: Any, data: dict) -> None:
+    followers_collection = db['tiktok_followers']
+    followers_collection.insert_one({
+        'data': data,
+        'recordCreated': pendulum.now(),
+    })
+    print(f"Saving followers data: {data}")
+
+
+def save_parser_history(db: Any, parser_name: str, start_time: pendulum.DateTime, total_items: int, status: str, time_taken: float) -> None:
+    end_time = pendulum.now()
+    parser_history = {
+        'parserName': parser_name,
+        'parserStart': start_time,
+        'recordCreated': end_time,
+        'time': time_taken,
+        'status': status,
+        'followers': total_items,
+    }
+    db['parser_history'].insert_one(parser_history)
+    print(f"Function finished with status: {status}")
 
 default_args = {
     'owner': 'airflow',
