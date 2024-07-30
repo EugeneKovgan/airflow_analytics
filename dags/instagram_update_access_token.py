@@ -1,7 +1,3 @@
-import sys
-import os
-sys.path.append('/mnt/e/Symfa/airflow_analytics')
-
 from airflow import DAG
 from airflow.operators.python import PythonOperator
 from airflow.utils.dates import days_ago
@@ -9,6 +5,7 @@ import requests
 import pendulum
 from datetime import datetime
 from typing import Any, Dict
+from airflow.models import Variable
 from common.common_functions import (
     get_mongo_client,
     close_mongo_connection,
@@ -25,9 +22,9 @@ def update_instagram_access_token(**kwargs: Dict[str, Any]) -> None:
     start_time = pendulum.now()
     log_parser_start(parser_name)
 
-    app_id = os.getenv('FB_APP_CLIENT_ID')
-    app_secret = os.getenv('FB_APP_SECRET')
-    auth_code = os.getenv('IG_AUTHCODE')
+    app_id = Variable.get('FB_APP_CLIENT_ID')
+    app_secret = Variable.get('FB_APP_SECRET')
+    auth_code = Variable.get('IG_AUTHCODE')
 
     if not all([app_id, app_secret, auth_code]):
         raise ValueError("One or more environment variables are missing.")

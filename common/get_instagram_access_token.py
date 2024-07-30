@@ -1,13 +1,6 @@
-import sys
-import os
-from dotenv import load_dotenv
+# common/get_instagram_access_token.py
 
-dotenv_path = os.path.join('/mnt/e/Symfa/airflow_analytics', '.env')
-load_dotenv(dotenv_path)
-sys.path.append('/mnt/e/Symfa/airflow_analytics')
-
-from pymongo import MongoClient
-import pendulum
+from common.common_functions import get_mongo_client
 
 def get_instagram_access_token() -> str:
     db = get_mongo_client()
@@ -25,9 +18,4 @@ def get_instagram_access_token() -> str:
     print(f"Returning access token from database: {access_token}")
     return access_token
 
-def get_mongo_client() -> MongoClient:
-    mongo_url = os.getenv("MONGO_URL")
-    mongo_dbname = os.getenv("MONGO_DBNAME")
-    client = MongoClient(mongo_url)
-    db = client[mongo_dbname]
-    return db
+

@@ -1,7 +1,3 @@
-import sys
-import os
-sys.path.append('/mnt/e/Symfa/airflow_analytics')
-
 from airflow import DAG
 from airflow.operators.python import PythonOperator
 from airflow.utils.dates import days_ago
@@ -17,6 +13,7 @@ from common.common_functions import (
     handle_parser_error,
     get_mongo_client
 )
+from airflow.models import Variable
 from common.get_instagram_access_token import get_instagram_access_token
 
 def get_instagram_followers_stats(**kwargs: Dict[str, Any]) -> None:
@@ -34,7 +31,7 @@ def get_instagram_followers_stats(**kwargs: Dict[str, Any]) -> None:
         ig_access_token = get_instagram_access_token()
         print(f"IG_ACCESS_TOKEN received: {ig_access_token}")
 
-        ig_business_account = os.getenv('IG_BUSINESS_ACCOUNT')
+        ig_business_account = Variable.get('IG_BUSINESS_ACCOUNT')
         print(f"IG_BUSINESS_ACCOUNT: {ig_business_account}")
 
         if not ig_access_token or not ig_business_account:

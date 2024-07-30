@@ -1,7 +1,3 @@
-import sys
-import os
-sys.path.append('/mnt/e/Symfa/airflow_analytics')
-
 from airflow import DAG
 from airflow.operators.python import PythonOperator
 from airflow.utils.dates import days_ago
@@ -16,6 +12,7 @@ from common.common_functions import (
     get_mongo_client,
     get_tikapi_client
 )
+from airflow.models import Variable
 from typing import Any, Dict, List
 
 def get_tiktok_comments(**kwargs: Dict[str, Any]) -> None:
@@ -62,7 +59,7 @@ def fetch_video_ids(db: Any) -> List[str]:
     return list(posts_collection.distinct('video.id'))
 
 def process_video_comments(tiktok_client: Any, db: Any, video_id: str) -> int:
-    user = tiktok_client.user({ 'accountKey': os.getenv('TIKAPI_AUTHKEY') })
+    user = tiktok_client.user({ 'accountKey': Variable.get('TIKAPI_AUTHKEY') })
     total_comments_count = 0
 
     try:

@@ -1,7 +1,3 @@
-import sys
-import os
-sys.path.append('/mnt/e/Symfa/airflow_analytics')
-
 from airflow import DAG
 from airflow.operators.python import PythonOperator
 from airflow.utils.dates import days_ago
@@ -21,9 +17,7 @@ from typing import Any, Dict
 MAX_RETRIES = 3
 
 def fetch_tiktok_followers_data(tiktok_client, parser_name, proceed):
-    user = tiktok_client.user({
-        "accountKey": os.getenv('TIKAPI_AUTHKEY')
-    })
+    user = get_tikapi_client()
     data = None
     retry_count = MAX_RETRIES
     while retry_count:
@@ -53,8 +47,7 @@ def get_tiktok_followers_stats(**kwargs: Dict[str, Any]) -> None:
     start_time = pendulum.now()
     log_parser_start(parser_name)
 
-    mongo_client = MongoClient(os.getenv('MONGO_URL'))
-    db = mongo_client[os.getenv('MONGO_DBNAME')]
+    db = get_mongo_client()
     data = None
 
     try:

@@ -1,33 +1,33 @@
 # common/common_functions.py
-import sys
-import os
-from dotenv import load_dotenv
-
-dotenv_path = os.path.join('/mnt/e/Symfa/airflow_analytics', '.env')
-load_dotenv(dotenv_path)
-sys.path.append('/mnt/e/Symfa/airflow_analytics')
 
 from datetime import datetime
 from pymongo import MongoClient
 import pendulum
-from tikapi import TikAPI, ResponseException
-from typing import Any, Dict, Callable
+from tikapi import TikAPI
+from typing import Any, Dict
 from dataclasses import asdict
+from airflow.models import Variable
 from common.schemas import Document, Video, VideoStats
+
 import logging
 logger = logging.getLogger("airflow")
-# common/common_functions.py
 
 def get_mongo_client() -> MongoClient:
-    mongo_url = os.getenv("MONGO_URL")
-    mongo_dbname = os.getenv("MONGO_DBNAME")
+    mongo_url = Variable.get("MONGO_URL")
+    mongo_dbname = Variable.get("MONGO_DBNAME")
+    
+    print(f"mongo_dbname: {mongo_dbname}, type: {type(mongo_dbname)}")  
+    
+    if not isinstance(mongo_dbname, str) or not mongo_dbname:
+        raise TypeError(f"Invalid mongo_dbname: {mongo_dbname}")
+    
     client = MongoClient(mongo_url)
     db = client[mongo_dbname]
     return db
 
 def get_tikapi_client() -> TikAPI:
-    api_key = os.getenv("TIKAPI_KEY")
-    auth_key = os.getenv("TIKAPI_AUTHKEY")
+    api_key = Variable.get("TIKAPI_KEY")
+    auth_key = Variable.get("TIKAPI_AUTHKEY")
     api = TikAPI(api_key)
     return api.user(accountKey=auth_key)
 

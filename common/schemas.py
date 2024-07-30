@@ -1,10 +1,4 @@
-import sys
-import os
-from dotenv import load_dotenv
-
-dotenv_path = os.path.join('/mnt/e/Symfa/airflow_analytics', '.env')
-load_dotenv(dotenv_path)
-sys.path.append('/mnt/e/Symfa/airflow_analytics')
+# common/schemas.py
 
 from dataclasses import dataclass, field
 from typing import Optional

@@ -1,7 +1,3 @@
-import sys
-import os
-sys.path.append('/mnt/e/Symfa/airflow_analytics')
-
 from airflow import DAG
 from airflow.operators.python import PythonOperator
 from airflow.utils.dates import days_ago
@@ -15,7 +11,6 @@ from common.common_functions import (
     save_parser_history,
     handle_parser_error,
     get_mongo_client,
-    parse_datetime
 )
 
 def get_coefficient(day: int, days_before_first_round: int) -> float:
