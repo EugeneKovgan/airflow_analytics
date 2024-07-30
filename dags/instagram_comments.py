@@ -56,7 +56,6 @@ def process_video_comments(db: MongoClient, video_id: str, access_token: str) ->
 def get_instagram_comments(**kwargs: Dict[str, Any]) -> None:
     parser_name = 'Instagram Comments'
     status = 'success'
-    proceed = True
     start_time = pendulum.now()
     log_parser_start(parser_name)
 
@@ -68,22 +67,15 @@ def get_instagram_comments(**kwargs: Dict[str, Any]) -> None:
         video_ids = fetch_video_ids(db)
 
         for video_id in video_ids:
-            if not proceed:
-                break
-
             try:
                 total_comments_count += process_video_comments(db, video_id, ig_access_token)
             except Exception as error:
-                result = handle_parser_error(error, parser_name, proceed)
-                status = result["status"]
-                proceed = result["proceed"]
-                if not proceed:
+                status = handle_parser_error(error, parser_name)
+                if status == 'error':
                     break
 
     except Exception as error:
-        result = handle_parser_error(error, parser_name, proceed)
-        status = result["status"]
-        proceed = result["proceed"]
+        status = handle_parser_error(error, parser_name)
     finally:
         if db:
             save_parser_history(db, parser_name, start_time, 'comments', total_comments_count, status)
@@ -109,7 +101,6 @@ dag = DAG(
 instagram_comments_task = PythonOperator(
     task_id='get_instagram_comments',
     python_callable=get_instagram_comments,
-    provide_context=True,
     dag=dag,
 )
 

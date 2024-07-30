@@ -2,7 +2,7 @@ from airflow import DAG
 from airflow.operators.python import PythonOperator
 from airflow.utils.dates import days_ago
 from pymongo import UpdateOne
-from common.common_functions import close_mongo_connection, get_mongo_client, combine_videos_object, log_parser_finish, save_parser_history
+from common.common_functions import close_mongo_connection, get_mongo_client, combine_videos_object, log_parser_finish, save_parser_history, handle_parser_error
 from typing import Any, Dict
 import pendulum
 
@@ -47,8 +47,8 @@ def extract_and_combine(**kwargs: Dict[str, Any]) -> None:
 
         print("Data combined and saved to new collection in remote MongoDB")
     except Exception as error:
-        status = 'failure'
         print(f"Error during processing: {str(error)}")
+        status = handle_parser_error(error, parser_name)
         raise
     finally:
         save_parser_history(db, parser_name, start_time, 'videos', total_videos, status)

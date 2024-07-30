@@ -11,7 +11,6 @@ from typing import Any, Dict
 def get_tiktok_posts_stats(**kwargs: Dict[str, Any]) -> None:
     parser_name = 'Tiktok Posts'
     status = 'success'
-    proceed = True
     start_time = pendulum.now()
     log_parser_start(parser_name)
     
@@ -35,7 +34,7 @@ def get_tiktok_posts_stats(**kwargs: Dict[str, Any]) -> None:
             else:
                 break
 
-        while proceed:
+        while True:
             data = None
             list_counter = 3
             while list_counter:
@@ -45,13 +44,11 @@ def get_tiktok_posts_stats(**kwargs: Dict[str, Any]) -> None:
                     break
                 except Exception as error:
                     list_counter -= 1
-                    result = handle_parser_error(error, parser_name, proceed)
-                    proceed = result["proceed"]
+                    status = handle_parser_error(error, parser_name)
                     if list_counter == 0:
-                        status = result["status"]
                         raise error
 
-            if not proceed or data is None:
+            if data is None:
                 break
 
             videos = data.get("itemList", [])
@@ -94,14 +91,9 @@ def get_tiktok_posts_stats(**kwargs: Dict[str, Any]) -> None:
                         break
                     except Exception as error:
                         counter_analytics -= 1
-                        result = handle_parser_error(error, parser_name, proceed)
-                        proceed = result["proceed"]
+                        status = handle_parser_error(error, parser_name)
                         if counter_analytics == 0:
-                            status = result["status"]
                             raise error
-
-                if not proceed:
-                    break
 
                 posts_stats_collection.insert_one({
                     "recordCreated": pendulum.now(),
@@ -109,13 +101,13 @@ def get_tiktok_posts_stats(**kwargs: Dict[str, Any]) -> None:
                     "analytics": analytics,
                 })
 
-            proceed = data.get("hasMore", False)
+            if not data.get("hasMore", False):
+                break
+
             cursor = data.get("cursor")
 
     except Exception as error:
-        result = handle_parser_error(error, parser_name, proceed)
-        status = result["status"]
-        proceed = result["proceed"]
+        status = handle_parser_error(error, parser_name)
     finally:
         if db:
             posts_count = len(video_ids)

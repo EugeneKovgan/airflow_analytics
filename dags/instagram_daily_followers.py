@@ -18,7 +18,6 @@ from common.common_functions import (
 def recalculate_instagram_daily_followers(**kwargs: Dict[str, Any]) -> None:
     parser_name = 'Instagram Daily Followers'
     status = 'success'
-    proceed = True
     start_time = pendulum.now()
     log_parser_start(parser_name)
 
@@ -130,11 +129,7 @@ def recalculate_instagram_daily_followers(**kwargs: Dict[str, Any]) -> None:
 
         daily_followers_collection.insert_many(days)
     except Exception as error:
-        result = handle_parser_error(error, parser_name, proceed)
-        status = result["status"]
-        proceed = result["proceed"]
-        if not proceed:
-            raise
+        status = handle_parser_error(error, parser_name)
     finally:
         if db:
             if not history_saved:

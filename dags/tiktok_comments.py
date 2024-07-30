@@ -2,7 +2,6 @@ from airflow import DAG
 from airflow.operators.python import PythonOperator
 from airflow.utils.dates import days_ago
 import pendulum
-from pymongo import MongoClient
 from common.common_functions import (
     close_mongo_connection,
     handle_parser_error,
@@ -18,7 +17,6 @@ from typing import Any, Dict, List
 def get_tiktok_comments(**kwargs: Dict[str, Any]) -> None:
     parser_name = 'Tiktok Comments'
     status = 'success'
-    proceed = True
     start_time = pendulum.now()
     log_parser_start(parser_name)
 
@@ -30,22 +28,15 @@ def get_tiktok_comments(**kwargs: Dict[str, Any]) -> None:
 
         video_ids = fetch_video_ids(db)
         for video_id in video_ids:
-            if not proceed:
-                break
             try:
                 total_comments_count += process_video_comments(tiktok_client, db, video_id)
             except Exception as error:
-                result = handle_parser_error(error, parser_name, proceed)
-                proceed = result["proceed"]
-                status = result["status"]
-                if not proceed:
-                    break
+                status = handle_parser_error(error, parser_name)
                 print(f"{parser_name}: Error processing comments for video {video_id}: {error}")
+                break  # Exit the loop on a critical error
 
     except Exception as error:
-        result = handle_parser_error(error, parser_name, proceed)
-        status = result["status"]
-        proceed = result["proceed"]
+        status = handle_parser_error(error, parser_name)
         print(f"{parser_name}: Error: {error}")
 
     finally:

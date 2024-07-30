@@ -12,7 +12,6 @@ from common.common_functions import (
 def recalculate_tiktok_daily_followers(**kwargs: Dict[str, Any]) -> None:
     parser_name = 'Tiktok Daily Followers'
     status = 'success'
-    proceed = True
     start_time = pendulum.now()
     total_followers = 0
     log_parser_start(parser_name)
@@ -82,9 +81,7 @@ def recalculate_tiktok_daily_followers(**kwargs: Dict[str, Any]) -> None:
         daily_followers_collection.bulk_write(operations, ordered=False)
 
     except Exception as error:
-        result = handle_parser_error(error, parser_name, proceed)
-        status = result["status"]
-        proceed = result["proceed"]
+        status = handle_parser_error(error, parser_name)
         print(f"Tiktok Daily Followers: Error during processing: {str(error)}")
         raise
     finally:

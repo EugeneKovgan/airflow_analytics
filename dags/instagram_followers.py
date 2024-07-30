@@ -19,7 +19,6 @@ from common.get_instagram_access_token import get_instagram_access_token
 def get_instagram_followers_stats(**kwargs: Dict[str, Any]) -> None:
     parser_name = 'Instagram Followers'
     status = 'success'
-    proceed = True
     start_time = pendulum.now()
     log_parser_start(parser_name)
 
@@ -60,10 +59,8 @@ def get_instagram_followers_stats(**kwargs: Dict[str, Any]) -> None:
         })
 
     except Exception as error:
-        result = handle_parser_error(error, parser_name, proceed)
-        status = result["status"]
-        proceed = result["proceed"]
-        if not proceed:
+        status = handle_parser_error(error, parser_name)
+        if status == 'error':
             raise
 
     finally:

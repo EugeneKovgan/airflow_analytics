@@ -2,7 +2,6 @@ from airflow import DAG
 from airflow.operators.python import PythonOperator
 from airflow.utils.dates import days_ago
 import pendulum
-from pymongo import MongoClient
 from common.common_functions import (
     close_mongo_connection,
     handle_parser_error,
@@ -16,7 +15,7 @@ from typing import Any, Dict
 
 MAX_RETRIES = 3
 
-def fetch_tiktok_followers_data(tiktok_client, parser_name, proceed):
+def fetch_tiktok_followers_data(tiktok_client, parser_name):
     user = get_tikapi_client()
     data = None
     retry_count = MAX_RETRIES
@@ -28,8 +27,8 @@ def fetch_tiktok_followers_data(tiktok_client, parser_name, proceed):
             break
         except Exception as e:
             retry_count -= 1
-            result = handle_parser_error(e, parser_name, proceed)
-            if not result["proceed"]:
+            result = handle_parser_error(e, parser_name)
+            if result == 'error':
                 raise e
     return data
 
@@ -43,7 +42,6 @@ def save_followers_data(db, data):
 def get_tiktok_followers_stats(**kwargs: Dict[str, Any]) -> None:
     parser_name = 'Tiktok Followers'
     status = 'success'
-    proceed = True
     start_time = pendulum.now()
     log_parser_start(parser_name)
 
@@ -52,17 +50,15 @@ def get_tiktok_followers_stats(**kwargs: Dict[str, Any]) -> None:
 
     try:
         tiktok_client = get_tikapi_client()
-        data = fetch_tiktok_followers_data(tiktok_client, parser_name, proceed)
+        data = fetch_tiktok_followers_data(tiktok_client, parser_name)
         if data:
             save_followers_data(db, data)
     except Exception as error:
-        result = handle_parser_error(error, parser_name, proceed)
-        status = result["status"]
-        proceed = result["proceed"]
+        status = handle_parser_error(error, parser_name)
     finally:
         total_followers = data.json().get('follower_num', {}).get('value', 0) if data else 0
         save_parser_history(db, parser_name, start_time, 'followers', total_followers, status)
-        close_mongo_connection(mongo_client)
+        close_mongo_connection(db.client)
         log_parser_finish(parser_name)
 
 default_args = {

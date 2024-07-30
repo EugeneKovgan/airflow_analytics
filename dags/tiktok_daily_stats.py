@@ -121,7 +121,6 @@ def calculate_post(analytics_records, post_id, video_create_time):
 def recalculate_tiktok_daily_stats(**kwargs: Dict[str, Any]) -> None:
     parser_name = 'Tiktok Daily Stats'
     status = 'success'
-    proceed = True
     start_time = pendulum.now()
     log_parser_start(parser_name)
 
@@ -198,12 +197,9 @@ def recalculate_tiktok_daily_stats(**kwargs: Dict[str, Any]) -> None:
                 print(f"No data to insert for {day}")
 
     except Exception as error:
-        result = handle_parser_error(error, parser_name)
-        status = result["status"]
-        proceed = result["proceed"]
+        status = handle_parser_error(error, parser_name)
         print(f"An error occurred: {error}")
-        if not proceed:
-            raise
+        raise
     finally:
         if db:
             save_parser_history(db, parser_name, start_time, 'followers', total_followers, status)

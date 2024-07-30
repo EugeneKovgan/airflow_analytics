@@ -54,6 +54,18 @@ def save_parser_history(db, parser_name, start_time, data_type, total_count, sta
         "total_count": total_count,
         "status": status
     })
+    
+def save_token_update_history(db, platform, old_access_token, new_access_token, old_expiration_date, new_expiration_date, update_timestamp, status, error_message=''):
+    db.token_update_history.insert_one({
+        "platform": platform,
+        "oldAccessToken": old_access_token,
+        "newAccessToken": new_access_token,
+        "oldExpirationDate": old_expiration_date,
+        "newExpirationDate": new_expiration_date,
+        "updateTimestamp": update_timestamp,
+        "status": status,
+        "error_message": error_message
+    })    
 
 def combine_videos_object(document: Dict[str, Any], platform: str) -> Dict[str, Any]:
     video = document.get("video", {})
@@ -100,60 +112,32 @@ def log_parser_finish(parser_name):
 
 error_retry_counters = {}
 
-def handle_parser_error(error, parser_name, max_retries=3):
+def handle_parser_error(error, parser_name) -> str:
     status = 'success'
-    short_message = ''
-    proceed = True
-
+    
     if is_rate_limit_error(error):
-        status = 'Rate limit reached'
-        short_message = 'Error: rate_limit'
-        print('Rate-Limit reached. Terminating function.')
-        proceed = False
+        print(f'{parser_name}: Rate-Limit reached.')
+        status = 'error'
     elif is_quota_exceeded_error(error):
-        status = 'Quota exceeded'
-        short_message = 'Error: quota_exceeded'
-        print('Quota exceeded. Terminating function.')
-        proceed = False
+        print(f'{parser_name}: Quota exceeded.')
+        status = 'error'
     elif is_forbidden_error(error):
         if is_comments_disabled_error(error):
-            print('Comments are disabled for this video. Continuing function.')
-            proceed = True
-            status = 'success'
+            print(f'{parser_name}: Comments are disabled for this video.')
         else:
-            if parser_name not in error_retry_counters:
-                error_retry_counters[parser_name] = 0
-            error_retry_counters[parser_name] += 1
-
-            print(f"Attempt {error_retry_counters[parser_name]} for {parser_name}")
-
-            if error_retry_counters[parser_name] > max_retries:
-                status = 'Forbidden request'
-                short_message = 'Error: forbidden'
-                print('Forbidden request. Terminating function after multiple retries.')
-                proceed = False
-            else:
-                print(f'Forbidden request attempt {error_retry_counters[parser_name]}. Retrying...')
-                proceed = True
+            print(f'{parser_name}: Forbidden request.')
+            status = 'error'
     elif is_invalid_grant_error(error):
-        status = 'Invalid grant'
-        short_message = 'Error: invalid_grant'
-        print('Invalid grant. Terminating function.')
-        proceed = False
+        print(f'{parser_name}: Invalid grant.')
+        status = 'error'
     elif is_undefined_property_error(error):
-        print('Cannot read properties of undefined. Continuing function.')
-        proceed = True
+        print(f'{parser_name}: Cannot read properties of undefined.')
     else:
-        short_message = f'Error: {str(error)}'
-        print(f'{parser_name}: Error: {str(error)}')
-        proceed = False
+        print(f'{parser_name}: General error: {str(error)}')
+        status = 'error'
 
-    if proceed:
-        if parser_name in error_retry_counters:
-            del error_retry_counters[parser_name]
-
-    return {'status': 'success' if proceed else short_message, 'proceed': proceed}
-
+    log_exception_details(error, parser_name)
+    return status
 
 def is_rate_limit_error(error: Any) -> bool:
     return 'rate_limit' in str(error)
