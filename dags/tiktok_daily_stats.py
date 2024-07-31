@@ -67,7 +67,6 @@ def calculate_post(analytics_records, post_id, video_create_time):
         return []
 
     time = pendulum.instance(datetime.fromtimestamp(video_create_time))
-
     previous = empty_stats(time)
 
     volume_before_first_record = diff_stats(stats, empty_stats(time))
@@ -114,6 +113,10 @@ def calculate_post(analytics_records, post_id, video_create_time):
         previous['recordCreated'] = next_date
         time = time.add(days=1)
         day += 1
+
+        # Добавление даты в day_stats
+        day_stats['date'] = current_date.format('YYYY-MM-DD')
+        
         daily_analytics.append(day_stats)
 
     return daily_analytics
@@ -171,7 +174,8 @@ def recalculate_tiktok_daily_stats(**kwargs: Dict[str, Any]) -> None:
                         'finish_rate': x['analytics'].get('finish_rate', {}).get('value', 0),
                         'total_duration': x['analytics'].get('video_total_duration', {}).get('value', 0)
                     } for x in filtered_analytics_records],
-                    str(p['_id'])
+                    str(p['_id']),
+                    p['video']['createTime'] 
                 )
 
                 if analytics and len(analytics) > 0:

@@ -42,6 +42,8 @@ def accumulate_stats(target, source):
 
 def empty_stats(time):
     return {
+        "postId": "",
+        "date": "",
         "collect_count": 0,
         "comment_count": 0,
         "digg_count": 0,
@@ -67,7 +69,6 @@ def calculate_post(analytics_records, post_id, video_create_time):
         return []
 
     time = pendulum.instance(datetime.fromtimestamp(video_create_time))
-
     previous = empty_stats(time)
 
     volume_before_first_record = diff_stats(stats, empty_stats(time))
@@ -108,12 +109,19 @@ def calculate_post(analytics_records, post_id, video_create_time):
                 whole_duration = (pendulum.instance(stats['recordCreated']) - inside_previous['recordCreated']).days
                 today_duration = (next_date - inside_previous['recordCreated']).days
                 if whole_duration > 0:
-                    accumulate_stats(day_stats, {k: v * (today_duration / whole_duration) for k, v in diff.items() if isinstance(v, (int, float))})
+                    updated_stats = {k: v * (today_duration / whole_duration) for k, v in diff.items() if isinstance(v, (int, float))}
+                    accumulate_stats(day_stats, updated_stats)
 
         accumulate_stats(previous, day_stats)
         previous['recordCreated'] = next_date
         time = time.add(days=1)
         day += 1
+        day_stats['date'] = current_date.format('YYYY-MM-DD')
+        day_stats['recordCreated'] = {
+            "_i": int(current_date.timestamp() * 1000),  
+            "_d": current_date.format('YYYY-MM-DDTHH:mm:ss.SSSZZ'),  
+        }
+        day_stats['postId'] = post_id
         daily_analytics.append(day_stats)
 
     return daily_analytics
@@ -147,20 +155,29 @@ def recalculate_instagram_daily_stats(**kwargs: Dict[str, Any]) -> None:
         for p in posts:
             post_id = p['_id']
             video_create_time = p['video']['createTime']
-            print(f"Processing video {p['video']['desc']} (#{post_id})")
             analytics_records = list(posts_stats_collection.find({'postId': post_id}).sort('recordCreated', 1))
-            print(f"Analytics records for post {post_id}: {analytics_records}")
-            analytics = calculate_post(analytics_records, post_id, video_create_time)
-            print(f"Calculated analytics for post {post_id}: {analytics}")
+            for record in analytics_records:
+                record['statistics']['recordCreated'] = record['recordCreated']
+                record['statistics']['videoCreateTime'] = video_create_time
+                record['statistics']['digg_count'] = record['statistics'].get('like_count', 0)
+                record['statistics']['forward_count'] = 0
+                record['statistics']['finish_rate'] = 0
+                record['statistics']['total_duration'] = 0
+                record['statistics']['download_count'] = 0
+                record['statistics']['lose_comment_count'] = 0
+                record['statistics']['lose_count'] = 0
+                record['statistics']['whatsapp_share_count'] = 0
+
+            analytics = calculate_post([r['statistics'] for r in analytics_records], post_id, video_create_time)
             if analytics:
                 for a in analytics:
+                    a['postId'] = post_id
                     if a['date'] not in daily_views_map:
                         daily_views_map[a['date']] = []
                     daily_views_map[a['date']].append(a)
 
         if 'instagram_daily_stats' in collections:
             daily_stats_collection.drop()
-            print("Existing collection 'instagram_daily_stats' dropped.")
 
         for day in daily_views_map:
             day_videos = daily_views_map[day]
@@ -173,9 +190,6 @@ def recalculate_instagram_daily_stats(**kwargs: Dict[str, Any]) -> None:
                         total_followers += a['followers']
             if day_videos:
                 daily_stats_collection.insert_many(day_videos)
-                print(f"Data for {day} successfully saved to database.")
-            else:
-                print(f"No data to insert for {day}")
 
     except Exception as error:
         status = handle_parser_error(error, parser_name)
