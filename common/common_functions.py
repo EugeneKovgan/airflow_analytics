@@ -46,12 +46,16 @@ def parse_datetime(datetime_str):
     return None
 
 def save_parser_history(db, parser_name, start_time, data_type, total_count, status):
+    current_time = int(pendulum.now('UTC').float_timestamp * 1000)  
+    start_time_ms = int(start_time.float_timestamp * 1000) 
+    duration = current_time - start_time_ms  
+
     db.parser_history.insert_one({
         "parserName": parser_name,
         "parserStart": start_time,
-        "recordCreated": datetime.utcnow(),
-        "data_type": data_type,
-        "total_count": total_count,
+        "recordCreated": pendulum.now('UTC'),
+        "time": duration,
+        data_type: int(total_count),
         "status": status
     })
     

@@ -1,12 +1,8 @@
-import sys
-import os
-sys.path.append('/mnt/e/Symfa/airflow_analytics')
-
 from airflow import DAG
 from airflow.operators.python import PythonOperator
 from airflow.utils.dates import days_ago
 from airflow.models import Variable
-from common.common_functions import close_mongo_connection, get_mongo_client, handle_parser_error, log_parser_finish, log_parser_start 
+from common.common_functions import close_mongo_connection, get_mongo_client, handle_parser_error, log_parser_finish, log_parser_start, save_parser_history 
 import pendulum
 from tikapi import TikAPI
 from typing import Any
@@ -35,9 +31,7 @@ def get_tiktok_followers_stats(**kwargs: Any) -> None:
         print(f"{parser_name}: Error during processing: {error}")
     finally:
         total_followers = data.get('follower_num', {}).get('value', 0) if data else 0
-        end_time = pendulum.now()
-        time_taken = (end_time - start_time).total_seconds()
-        save_parser_history(db, parser_name, start_time, total_followers, status, time_taken)
+        save_parser_history(db, parser_name, start_time, 'followers', total_followers, status)
         close_mongo_connection(db.client)
         log_parser_finish(parser_name)
 
@@ -65,19 +59,6 @@ def save_followers_data(db: Any, data: dict) -> None:
     })
     print(f"Saving followers data: {data}")
 
-
-def save_parser_history(db: Any, parser_name: str, start_time: pendulum.DateTime, total_items: int, status: str, time_taken: float) -> None:
-    end_time = pendulum.now()
-    parser_history = {
-        'parserName': parser_name,
-        'parserStart': start_time,
-        'recordCreated': end_time,
-        'time': time_taken,
-        'status': status,
-        'followers': total_items,
-    }
-    db['parser_history'].insert_one(parser_history)
-    print(f"Function finished with status: {status}")
 
 default_args = {
     'owner': 'airflow',
