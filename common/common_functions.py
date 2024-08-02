@@ -1,6 +1,6 @@
 # common/common_functions.py
 
-from datetime import datetime
+from datetime import datetime, timezone
 from pymongo import MongoClient
 import pendulum
 from tikapi import TikAPI
@@ -47,9 +47,9 @@ def parse_datetime(datetime_str):
 
 def save_parser_history(db, parser_name, start_time, data_type, total_count, status):
     db.parser_history.insert_one({
-        "parser_name": parser_name,
-        "start_time": start_time,
-        "end_time": datetime.utcnow(),
+        "parserName": parser_name,
+        "parserStart": start_time,
+        "recordCreated": datetime.utcnow(),
         "data_type": data_type,
         "total_count": total_count,
         "status": status
