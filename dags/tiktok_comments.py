@@ -12,10 +12,10 @@ from common.common_functions import (
     log_parser_finish,
     log_parser_start,
     save_parser_history,
-    get_mongo_client,
-    get_tikapi_client
+    get_mongo_client
 )
 from airflow.models import Variable
+from tikapi import TikAPI
 from typing import Any, Dict, List
 
 def get_tiktok_comments(**kwargs: Dict[str, Any]) -> None:
@@ -28,12 +28,15 @@ def get_tiktok_comments(**kwargs: Dict[str, Any]) -> None:
 
     try:
         db = get_mongo_client()
-        tiktok_client = get_tikapi_client()
+        api_key = Variable.get("TIKAPI_KEY")
+        auth_key = Variable.get("TIKAPI_AUTHKEY")
+        tiktok_client = TikAPI(api_key)
+        user = tiktok_client.user(accountKey=auth_key)
 
         video_ids = fetch_video_ids(db)
         for video_id in video_ids:
             try:
-                total_comments_count += process_video_comments(tiktok_client, db, video_id)
+                total_comments_count += process_video_comments(user, db, video_id)
             except Exception as error:
                 status = handle_parser_error(error, parser_name)
                 print(f"{parser_name}: Error processing comments for video {video_id}: {error}")
@@ -53,12 +56,11 @@ def fetch_video_ids(db: Any) -> List[str]:
     posts_collection = db['tiktok_posts']
     return list(posts_collection.distinct('video.id'))
 
-def process_video_comments(tiktok_client: Any, db: Any, video_id: str) -> int:
-    user = tiktok_client.user({ 'accountKey': Variable.get('TIKAPI_AUTHKEY') })
+def process_video_comments(user: Any, db: Any, video_id: str) -> int:
     total_comments_count = 0
 
     try:
-        response = user.posts.comments.list({ 'media_id': video_id })
+        response = user.posts.comments.list(media_id=video_id)
         if 'comments' in response.json():
             comments_collection = db['tiktok_comments']
             for comment in response.json()['comments']:
@@ -97,10 +99,10 @@ def process_comment(user: Any, comments_collection: Any, comment: Any) -> int:
         return 0
 
 def fetch_reply_comments(user: Any, comment: Any) -> List[Dict[str, Any]]:
-    response_reply = user.posts.comments.replies({
-        'media_id': comment['aweme_id'],
-        'comment_id': comment['cid'],
-    })
+    response_reply = user.posts.comments.replies(
+        media_id=comment['aweme_id'], 
+        comment_id=comment['cid']
+    )
     print(f"Fetched reply comments for comment {comment['cid']}: {response_reply.json()['comments']}")
     return response_reply.json()['comments']
 

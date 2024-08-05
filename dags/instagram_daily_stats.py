@@ -12,7 +12,7 @@ from common.common_functions import (
     close_mongo_connection,
     log_parser_finish,
     log_parser_start,
-    save_parser_history,
+    save_parser_full_history,
     handle_parser_error,
     get_mongo_client,
 )
@@ -136,13 +136,17 @@ def recalculate_instagram_daily_stats(**kwargs: Dict[str, Any]) -> None:
     start_time = pendulum.now()
     log_parser_start(parser_name)
 
+    data = {
+        'followers': 0,
+        'comments': 0,
+        'videos': 0
+    }
+
     try:
         db = get_mongo_client()
         if not db:
             raise ValueError("Failed to connect to MongoDB")
         print("Successfully connected to MongoDB")
-
-        total_followers = 0
 
         posts_collection = db['instagram_reels']
         posts_stats_collection = db['instagram_reels_stats']
@@ -155,6 +159,7 @@ def recalculate_instagram_daily_stats(**kwargs: Dict[str, Any]) -> None:
         daily_views_map = {}
 
         posts = list(posts_collection.find({}))
+        data['videos'] = len(posts)
 
         for p in posts:
             post_id = p['_id']
@@ -191,7 +196,7 @@ def recalculate_instagram_daily_stats(**kwargs: Dict[str, Any]) -> None:
                     day_followers = daily_followers_map[day]
                     for a in day_videos:
                         a['followers'] = (day_followers * a['play_count']) / day_total_views
-                        total_followers += a['followers']
+                        data['followers'] += a['followers']
             if day_videos:
                 daily_stats_collection.insert_many(day_videos)
 
@@ -200,7 +205,7 @@ def recalculate_instagram_daily_stats(**kwargs: Dict[str, Any]) -> None:
         print(f"An error occurred: {error}")
     finally:
         if db:
-            save_parser_history(db, parser_name, start_time, 'followers', total_followers, status)
+            save_parser_full_history(db, parser_name, start_time, data, status)
             close_mongo_connection(db.client)
         log_parser_finish(parser_name)
 

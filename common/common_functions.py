@@ -59,6 +59,22 @@ def save_parser_history(db, parser_name, start_time, data_type, total_count, sta
         "status": status
     })
     
+def save_parser_full_history(db, parser_name, start_time, data: Dict[str, int], status):
+    current_time = int(pendulum.now('UTC').float_timestamp * 1000)  
+    start_time_ms = int(start_time.float_timestamp * 1000) 
+    duration = current_time - start_time_ms  
+
+    db.parser_history.insert_one({
+        "parserName": parser_name,
+        "parserStart": start_time,
+        "recordCreated": pendulum.now('UTC'),
+        "time": duration,
+        "Followers": int(data.get('followers', 0)),
+        "Comments": int(data.get('comments', 0)),
+        "Videos": int(data.get('videos', 0)),
+        "status": status
+    })
+    
 def save_token_update_history(db, platform, old_access_token, new_access_token, old_expiration_date, new_expiration_date, update_timestamp, status, error_message=''):
     db.token_update_history.insert_one({
         "platform": platform,

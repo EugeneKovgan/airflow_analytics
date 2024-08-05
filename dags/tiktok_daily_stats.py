@@ -46,6 +46,8 @@ def accumulate_stats(target, source):
 
 def empty_stats(time):
     return {
+        "postId":'',
+        "date":'',
         "collect_count": 0,
         "comment_count": 0,
         "digg_count": 0,
@@ -62,6 +64,8 @@ def empty_stats(time):
         "video_duration": 0,
         "followers": 0,
     }
+
+# def calculate_post(analytics_records, post_id, video_create_time):
 
 def calculate_post(analytics_records, post_id, video_create_time):
     now = pendulum.now()
@@ -118,12 +122,77 @@ def calculate_post(analytics_records, post_id, video_create_time):
         time = time.add(days=1)
         day += 1
 
-        # Добавление даты в day_stats
         day_stats['date'] = current_date.format('YYYY-MM-DD')
+        
+        day_stats['recordCreated'] = {
+            "_i": int(current_date.timestamp() * 1000),  
+            "_d": current_date.format('YYYY-MM-DDTHH:mm:ss.SSSZZ'),  
+        }
         
         daily_analytics.append(day_stats)
 
     return daily_analytics
+
+#     now = pendulum.now()
+#     today = now.start_of('day')
+#     stats = analytics_records.pop(0) if analytics_records else None
+#     if not stats:
+#         return []
+
+#     time = pendulum.instance(datetime.fromtimestamp(video_create_time))
+#     previous = empty_stats(time)
+
+#     volume_before_first_record = diff_stats(stats, empty_stats(time))
+#     days_before_first_round = (pendulum.instance(stats['recordCreated']) - time).days
+
+#     def get_daily_speed(day):
+#         coeff = get_coefficient(day, days_before_first_round)
+#         return {k: v * coeff for k, v in volume_before_first_record.items() if isinstance(v, (int, float))}
+
+#     virtual = days_before_first_round > 3
+#     day = 1
+
+#     daily_analytics = []
+#     while time < today:
+#         day_stats = empty_stats(time)
+#         current_date = time.start_of('day')
+#         next_date = current_date.add(days=1)
+
+#         inside_previous = empty_stats(previous['recordCreated'])
+#         accumulate_stats(inside_previous, previous)
+
+#         while stats and pendulum.instance(stats['recordCreated']) < next_date and analytics_records:
+#             diff = diff_stats(stats, inside_previous)
+#             accumulate_stats(day_stats, diff)
+#             if analytics_records:
+#                 accumulate_stats(inside_previous, diff)
+#                 stats = analytics_records.pop(0)
+#             virtual = False
+
+#         if virtual:
+#             proportion1 = get_daily_speed(day - 1)
+#             proportion2 = get_daily_speed(day)
+#             accumulate_stats(day_stats, proportion1)
+#             accumulate_stats(day_stats, proportion2)
+#         else:
+#             if stats and (next_date - pendulum.instance(stats['recordCreated'])).days < 24:
+#                 diff = diff_stats(stats, inside_previous)
+#                 whole_duration = (pendulum.instance(stats['recordCreated']) - inside_previous['recordCreated']).days
+#                 today_duration = (next_date - inside_previous['recordCreated']).days
+#                 if whole_duration > 0:
+#                     accumulate_stats(day_stats, {k: v * (today_duration / whole_duration) for k, v in diff.items() if isinstance(v, (int, float))})
+
+#         accumulate_stats(previous, day_stats)
+#         previous['recordCreated'] = next_date
+#         time = time.add(days=1)
+#         day += 1
+
+#         # Добавление даты в day_stats
+#         day_stats['date'] = current_date.format('YYYY-MM-DD')
+        
+#         daily_analytics.append(day_stats)
+
+#     return daily_analytics
 
 def recalculate_tiktok_daily_stats(**kwargs: Dict[str, Any]) -> None:
     parser_name = 'Tiktok Daily Stats'
