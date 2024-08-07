@@ -1,6 +1,5 @@
 # common/common_functions.py
 
-# from datetime import datetime, timezone
 from pymongo import MongoClient
 import pendulum
 from tikapi import TikAPI
@@ -38,13 +37,6 @@ def save_data_to_mongo(collection_name: str, data: Dict[str, Any], ts: str) -> N
         "recordCreated": ts
     })
     
-# def parse_datetime(datetime_str):
-#     if isinstance(datetime_str, str):
-#         return pendulum.parse(datetime_str)
-#     elif isinstance(datetime_str, datetime):
-#         return pendulum.instance(datetime_str)
-#     return None
-
 def save_parser_history(db, parser_name, start_time, data_type, total_count, status):
     current_time = int(pendulum.now('UTC').float_timestamp * 1000)  
     start_time_ms = int(start_time.float_timestamp * 1000) 
@@ -69,9 +61,9 @@ def save_parser_full_history(db, parser_name, start_time, data: Dict[str, int], 
         "parserStart": start_time,
         "recordCreated": pendulum.now('UTC'),
         "time": duration,
-        "Followers": int(data.get('followers', 0)),
-        "Comments": int(data.get('comments', 0)),
-        "Videos": int(data.get('videos', 0)),
+        "followers": int(data.get('followers', 0)),
+        "comments": int(data.get('comments', 0)),
+        "videos": int(data.get('videos', 0)),
         "status": status
     })
     

@@ -74,9 +74,10 @@ def get_tiktok_posts_stats(**kwargs: Dict[str, Any]) -> None:
                 if video_id not in video_ids:
                     post = {
                         "_id": video_id,
-                        "video": video,
                         "recordCreated": pendulum.now(),
                         "tags": None,
+                        "video": video,
+                        "platform": "tiktok",
                     }
                     posts_collection.insert_one(post)
                     print(f"New Video Discovered from {pendulum.from_timestamp(video['createTime'])} of {video['video']['duration']}s {video.get('desc')}")
@@ -115,7 +116,7 @@ def get_tiktok_posts_stats(**kwargs: Dict[str, Any]) -> None:
     finally:
         if db:
             posts_count = len(video_ids)
-            save_parser_history(db, parser_name, start_time, 'posts', posts_count, status)
+            save_parser_history(db, parser_name, start_time, 'videos', posts_count, status)
             close_mongo_connection(db.client)
             log_parser_finish(parser_name)
 
