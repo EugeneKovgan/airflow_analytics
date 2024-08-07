@@ -6,7 +6,6 @@ from airflow import DAG
 from airflow.operators.python import PythonOperator
 from airflow.utils.dates import days_ago
 import pendulum
-from datetime import datetime
 from typing import Any, Dict
 from common.common_functions import (
     close_mongo_connection,
@@ -72,7 +71,7 @@ def calculate_post(analytics_records, post_id, video_create_time):
     if not stats:
         return []
 
-    time = pendulum.instance(datetime.fromtimestamp(video_create_time))
+    time = pendulum.from_timestamp(video_create_time)
     previous = empty_stats(time)
 
     volume_before_first_record = diff_stats(stats, empty_stats(time))
@@ -122,8 +121,9 @@ def calculate_post(analytics_records, post_id, video_create_time):
         day += 1
         day_stats['date'] = current_date.format('YYYY-MM-DD')
         day_stats['recordCreated'] = {
-            "_i": int(current_date.timestamp() * 1000),  
-            "_d": current_date.format('YYYY-MM-DDTHH:mm:ss.SSSZZ'),  
+            "_i": int(current_date.timestamp() * 1000), 
+            "_d": current_date 
+            # "_d": current_date.isoformat(),  
         }
         day_stats['postId'] = post_id
         daily_analytics.append(day_stats)

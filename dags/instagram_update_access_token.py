@@ -7,7 +7,6 @@ from airflow.operators.python import PythonOperator
 from airflow.utils.dates import days_ago
 import requests
 import pendulum
-from datetime import datetime
 from typing import Any, Dict
 from airflow.models import Variable
 from common.common_functions import (
@@ -86,7 +85,7 @@ def update_instagram_access_token(**kwargs: Dict[str, Any]) -> None:
                 upsert=True
             )
 
-            save_token_update_history(db, 'Instagram', old_access_token, new_access_token, old_expiration_date, new_expiration_date, datetime.utcnow(), 'Success')
+            save_token_update_history(db, 'Instagram', old_access_token, new_access_token, old_expiration_date, new_expiration_date, pendulum.now(), 'Success')
 
         elif is_token_expired:
             # Token is expired, refresh token
@@ -117,14 +116,14 @@ def update_instagram_access_token(**kwargs: Dict[str, Any]) -> None:
                 upsert=True
             )
 
-            save_token_update_history(db, 'Instagram', old_access_token, new_access_token, old_expiration_date, new_expiration_date, datetime.utcnow(), 'Success')
+            save_token_update_history(db, 'Instagram', old_access_token, new_access_token, old_expiration_date, new_expiration_date, pendulum.now(), 'Success')
 
         else:
             print('Token is still valid, no need to refresh.')
 
     except requests.exceptions.RequestException as error:
         print('Error during token update:', error)
-        save_token_update_history(db, 'Instagram', old_access_token, '', old_expiration_date, '', datetime.utcnow(), 'Failed', str(error))
+        save_token_update_history(db, 'Instagram', old_access_token, '', old_expiration_date, '', pendulum.now(), 'Failed', str(error))
         status = handle_parser_error(error, parser_name)
 
     finally:

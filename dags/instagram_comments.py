@@ -7,7 +7,6 @@ from airflow.operators.python import PythonOperator
 from airflow.utils.dates import days_ago
 import requests
 import pendulum
-from datetime import datetime
 from typing import Any, Dict
 from pymongo import MongoClient
 from common.common_functions import (

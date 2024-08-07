@@ -7,7 +7,6 @@ from airflow.operators.python import PythonOperator
 from airflow.utils.dates import days_ago
 import requests
 import pendulum
-from datetime import datetime
 from typing import Any, Dict
 
 from common.common_functions import (
@@ -90,7 +89,7 @@ def get_instagram_reels_stats(**kwargs: Dict[str, Any]) -> None:
                     new_reel_post = {
                         "_id": id,
                         "platform": "instagram",
-                        "recordCreated": datetime.now(),
+                        "recordCreated": pendulum.now(),
                         "tags": None,
                         "video": {
                             "id": id,
@@ -115,7 +114,7 @@ def get_instagram_reels_stats(**kwargs: Dict[str, Any]) -> None:
                     # Insert reel stats
                     reels_stats_collection.insert_one({
                         "postId": id,
-                        "recordCreated": datetime.now(),
+                        "recordCreated": pendulum.now(),
                         "statistics": {
                             "like_count": reel['like_count'],
                             "comment_count": reel['comments_count'],

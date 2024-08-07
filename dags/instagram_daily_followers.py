@@ -6,7 +6,6 @@ from airflow import DAG
 from airflow.operators.python import PythonOperator
 from airflow.utils.dates import days_ago
 import pendulum
-from datetime import datetime
 from typing import Any, Dict
 
 from common.common_functions import (
@@ -15,8 +14,7 @@ from common.common_functions import (
     log_parser_start,
     save_parser_history,
     handle_parser_error,
-    get_mongo_client,
-    parse_datetime
+    get_mongo_client
 )
 
 def recalculate_instagram_daily_followers(**kwargs: Dict[str, Any]) -> None:
@@ -46,7 +44,7 @@ def recalculate_instagram_daily_followers(**kwargs: Dict[str, Any]) -> None:
         first_date = followers_stats[0]['recordCreated']
 
         previous_stat_num = first_num
-        previous_stat_date = parse_datetime(first_date)
+        previous_stat_date = pendulum.parse(first_date) if isinstance(first_date, str) else pendulum.instance(first_date)
 
         today = pendulum.today()
         overall_accumulator = 0
@@ -56,14 +54,14 @@ def recalculate_instagram_daily_followers(**kwargs: Dict[str, Any]) -> None:
         first_tracking_followers_count = 0
 
         i = 1
-        date = parse_datetime(first_date).start_of('day')
+        date = previous_stat_date.start_of('day')
 
         while date < today and i < len(followers_stats):
             next_day = date.add(days=1)
             day_accumulator = 0
 
             current_stat_num = followers_stats[i]['data']['followers_count']
-            current_stat_date = parse_datetime(followers_stats[i]['recordCreated'])
+            current_stat_date = pendulum.parse(followers_stats[i]['recordCreated']) if isinstance(followers_stats[i]['recordCreated'], str) else pendulum.instance(followers_stats[i]['recordCreated'])
 
             if overall_accumulator == 0:
                 delta_seconds = (current_stat_date - previous_stat_date).total_seconds()
@@ -75,7 +73,7 @@ def recalculate_instagram_daily_followers(**kwargs: Dict[str, Any]) -> None:
 
             while date.start_of('day') == current_stat_date.start_of('day') and i < len(followers_stats):
                 current_stat_num = followers_stats[i]['data']['followers_count']
-                current_stat_date = parse_datetime(followers_stats[i]['recordCreated'])
+                current_stat_date = pendulum.parse(followers_stats[i]['recordCreated']) if isinstance(followers_stats[i]['recordCreated'], str) else pendulum.instance(followers_stats[i]['recordCreated'])
 
                 day_accumulator += current_stat_num - overall_accumulator
                 overall_accumulator = current_stat_num
@@ -105,7 +103,7 @@ def recalculate_instagram_daily_followers(**kwargs: Dict[str, Any]) -> None:
             date = next_day
 
         post_days = list(posts_stats_collection.aggregate([
-            { '$match': { 'date': { '$lt': parse_datetime(first_date).format('YYYY-MM-DD') } } },
+            { '$match': { 'date': { '$lt': previous_stat_date.format('YYYY-MM-DD') } } },
             {
                 '$group': {
                     '_id': '$date',
