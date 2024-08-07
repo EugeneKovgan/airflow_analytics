@@ -44,7 +44,9 @@ def accumulate_stats(target, source):
             target[key] += source.get(key, 0)
 
 def empty_stats(time):
+    platform = 'tiktok'    
     return {
+        'platform': platform,
         "postId": '',
         "date": '',
         "collect_count": 0,

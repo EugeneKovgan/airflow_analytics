@@ -15,6 +15,7 @@ from typing import Any
 def get_tiktok_followers_stats(**kwargs: Any) -> None:
     parser_name = 'Tiktok Followers'
     status = 'success'
+    platform = 'tiktok'
     start_time = pendulum.now()
     log_parser_start(parser_name)
 
@@ -29,7 +30,7 @@ def get_tiktok_followers_stats(**kwargs: Any) -> None:
         user = tiktok_client.user(accountKey=auth_key)
         data = fetch_tiktok_followers_data(user, parser_name)
         if data:
-            save_followers_data(db, data)
+            save_followers_data(db, data, platform)
     except Exception as error:
         status = handle_parser_error(error, parser_name)
         print(f"{parser_name}: Error during processing: {error}")
@@ -55,10 +56,11 @@ def fetch_tiktok_followers_data(user: Any, parser_name: str) -> dict:
                 raise e
     return data
 
-def save_followers_data(db: Any, data: dict) -> None:
+def save_followers_data(db: Any, data: dict, platform: str) -> None:
     followers_collection = db['tiktok_followers']
     followers_collection.insert_one({
         'data': data,
+        'platform': platform,
         'recordCreated': pendulum.now(),
     })
     print(f"Saving followers data: {data}")

@@ -1,4 +1,3 @@
-
 import sys
 import os
 sys.path.append('/mnt/e/Symfa/airflow_analytics')
@@ -14,6 +13,7 @@ def recalculate_tiktok_daily_followers():
     status = 'success'
     start_time = pendulum.now()
     log_parser_start(parser_name)
+    platform = 'tiktok'
 
     db = get_mongo_client()
     total_followers = 0
@@ -64,6 +64,7 @@ def recalculate_tiktok_daily_followers():
 
             days.append({
                 '_id': date.to_date_string(),
+                'platform': platform,
                 'followers': day_accumulator,
             })
 
@@ -84,6 +85,7 @@ def recalculate_tiktok_daily_followers():
             days.insert(0, {
                 '_id': day['_id'],
                 'followers': followers_for_day,
+                'platform': platform,
             })
             total_followers += followers_for_day
 
@@ -92,7 +94,6 @@ def recalculate_tiktok_daily_followers():
         status = handle_parser_error(error, parser_name)
     finally:
         if db:
-            # Save parser history - replace with your implementation
             save_parser_history(db, parser_name, start_time, 'followers', total_followers, status)
         close_mongo_connection(db.client)
         log_parser_finish(parser_name)

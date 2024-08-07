@@ -22,6 +22,7 @@ from common.get_instagram_access_token import get_instagram_access_token
 def get_instagram_followers_stats(**kwargs: Dict[str, Any]) -> None:
     parser_name = 'Instagram Followers'
     status = 'success'
+    platform = 'instagram'
     start_time = pendulum.now()
     log_parser_start(parser_name)
 
@@ -58,6 +59,7 @@ def get_instagram_followers_stats(**kwargs: Dict[str, Any]) -> None:
 
         followers_collection.insert_one({
             "data": data,
+            "platform": platform,
             "recordCreated": pendulum.now(),
         })
 

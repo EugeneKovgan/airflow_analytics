@@ -20,6 +20,7 @@ from common.common_functions import (
 def recalculate_instagram_daily_followers(**kwargs: Dict[str, Any]) -> None:
     parser_name = 'Instagram Daily Followers'
     status = 'success'
+    platform = 'instagram'
     start_time = pendulum.now()
     log_parser_start(parser_name)
 
@@ -122,6 +123,7 @@ def recalculate_instagram_daily_followers(**kwargs: Dict[str, Any]) -> None:
             followers = followers_by_views * day['views']
             days.insert(0, {
                 '_id': day['_id'],
+                'platform': platform,
                 'followers': followers,
             })
             total_followers += followers

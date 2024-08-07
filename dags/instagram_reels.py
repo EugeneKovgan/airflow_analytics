@@ -23,6 +23,7 @@ from common.get_instagram_access_token import get_instagram_access_token
 def get_instagram_reels_stats(**kwargs: Dict[str, Any]) -> None:
     parser_name = 'Instagram Reels Stats'
     status = 'success'
+    platform = 'instagram'
     start_time = pendulum.now()
     log_parser_start(parser_name)
 
@@ -36,11 +37,27 @@ def get_instagram_reels_stats(**kwargs: Dict[str, Any]) -> None:
         ig_access_token = get_instagram_access_token()
         print(f"IG_ACCESS_TOKEN received: {ig_access_token}")
 
-        ig_business_account = Variable.get('IG_BUSINESS_ACCOUNT')
+        ig_business_account = Variable.get('IG_BUSINESS_ACCOUNT').strip()
         print(f"IG_BUSINESS_ACCOUNT: {ig_business_account}")
 
         if not ig_access_token or not ig_business_account:
             raise ValueError("Missing access token or business account ID")
+
+        followers_url = f"https://graph.facebook.com/v14.0/{ig_business_account}"
+        followers_params = {
+            'fields': 'followers_count,id,profile_picture_url',
+            'access_token': ig_access_token
+        }
+
+        followers_response = requests.get(followers_url, params=followers_params)
+        print(followers_response.json())  # Добавьте это для отладки
+        if followers_response.status_code != 200:
+            raise Exception(f"API request for followers count failed with status {followers_response.status_code}: {followers_response.json()}")
+
+        followers_data = followers_response.json()
+        followers_count = followers_data.get('followers_count', 0)
+        profile_picture_id = followers_data.get('id', '')
+        profile_picture_url = followers_data.get('profile_picture_url', '')
 
         # Fetch all saved ids from the database for performance
         i = 0
@@ -59,21 +76,6 @@ def get_instagram_reels_stats(**kwargs: Dict[str, Any]) -> None:
             'access_token': ig_access_token
         }
 
-        followers_url = f"https://graph.facebook.com/v14.0/{ig_business_account}"
-        followers_params = {
-            'fields': 'followers_count,id,profile_picture_url',
-            'access_token': ig_access_token
-        }
-
-        followers_response = requests.get(followers_url, params=followers_params)
-        if followers_response.status_code != 200:
-            raise Exception(f"API request for followers count failed with status {followers_response.status_code}: {followers_response.json()}")
-
-        followers_data = followers_response.json()
-        followers_count = followers_data.get('followers_count', 0)
-        profile_picture_id = followers_data.get('id', '')
-        profile_picture_url = followers_data.get('profile_picture_url', '')
-
         while True:
             response = requests.get(url, params=params)
             if response.status_code != 200:
@@ -87,10 +89,6 @@ def get_instagram_reels_stats(**kwargs: Dict[str, Any]) -> None:
                     id = reel['id']
                     # Upsert a new reel or update existing one
                     new_reel_post = {
-                        "_id": id,
-                        "platform": "instagram",
-                        "recordCreated": pendulum.now(),
-                        "tags": None,
                         "video": {
                             "id": id,
                             "author": reel.get('username'),
@@ -108,7 +106,18 @@ def get_instagram_reels_stats(**kwargs: Dict[str, Any]) -> None:
                             "image_url": reel.get('media_url', '')
                         }
                     }
-                    reels_collection.update_one({"_id": id}, {"$set": new_reel_post}, upsert=True)
+                    
+                    update_data = {
+                        "$setOnInsert": {
+                            "platform": platform
+                        },
+                        "$set": {
+                            "recordCreated": pendulum.now(),
+                            "tags": None,
+                            "video": new_reel_post["video"]
+                        }
+                    }
+                    reels_collection.update_one({"_id": id}, update_data, upsert=True)
                     print(f"Video Processed: {new_reel_post['video']['desc']}")
 
                     # Insert reel stats

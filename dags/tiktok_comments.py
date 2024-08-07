@@ -25,6 +25,7 @@ def get_tiktok_comments(**kwargs: Dict[str, Any]) -> None:
     log_parser_start(parser_name)
 
     total_comments_count = 0
+    platform = 'tiktok'
 
     try:
         db = get_mongo_client()
@@ -36,7 +37,7 @@ def get_tiktok_comments(**kwargs: Dict[str, Any]) -> None:
         video_ids = fetch_video_ids(db)
         for video_id in video_ids:
             try:
-                total_comments_count += process_video_comments(user, db, video_id)
+                total_comments_count += process_video_comments(user, db, video_id, platform)
             except Exception as error:
                 status = handle_parser_error(error, parser_name)
                 print(f"{parser_name}: Error processing comments for video {video_id}: {error}")
@@ -56,7 +57,7 @@ def fetch_video_ids(db: Any) -> List[str]:
     posts_collection = db['tiktok_posts']
     return list(posts_collection.distinct('video.id'))
 
-def process_video_comments(user: Any, db: Any, video_id: str) -> int:
+def process_video_comments(user: Any, db: Any, video_id: str, platform: str) -> int:
     total_comments_count = 0
 
     try:
@@ -64,7 +65,7 @@ def process_video_comments(user: Any, db: Any, video_id: str) -> int:
         if 'comments' in response.json():
             comments_collection = db['tiktok_comments']
             for comment in response.json()['comments']:
-                total_comments_count += process_comment(user, comments_collection, comment)
+                total_comments_count += process_comment(user, comments_collection, comment, platform)
         else:
             print(f"No comments found for video {video_id}")
     except Exception as error:
@@ -72,13 +73,14 @@ def process_video_comments(user: Any, db: Any, video_id: str) -> int:
 
     return total_comments_count
 
-def process_comment(user: Any, comments_collection: Any, comment: Any) -> int:
+def process_comment(user: Any, comments_collection: Any, comment: Any, platform: str) -> int:
     existing_comment = comments_collection.find_one({ 'data.cid': comment['cid'] })
 
     if not existing_comment:
         reply_comments = fetch_reply_comments(user, comment) if comment.get('reply_comment_total', 0) > 0 else []
         comments_collection.insert_one({
             'data': comment,
+            'platform': platform,
             'recordCreated': pendulum.now(),
             'reply': reply_comments,
         })
@@ -90,6 +92,7 @@ def process_comment(user: Any, comments_collection: Any, comment: Any) -> int:
                 { 'data.cid': comment['cid'] },
                 {
                     'data': comment,
+                    'platform': platform,
                     'recordCreated': pendulum.now(),
                     'reply': updated_reply_comments,
                 },

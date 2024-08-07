@@ -45,10 +45,10 @@ def process_video_comments(db: MongoClient, video_id: str, access_token: str) ->
             if existing_comment:
                 comments_collection.update_one(
                     {'data.id': comment['id']},
-                    {"$set": {"data": comment, "recordUpdated": pendulum.now()}}
+                    {"$set": {"data": comment, "recordUpdated": pendulum.now(), "platform": "instagram"}}
                 )
             else:
-                comments_collection.insert_one({"data": comment, "recordCreated": pendulum.now()})
+                comments_collection.insert_one({"data": comment, "recordCreated": pendulum.now(), "platform": "instagram"})
 
             comments_count += 1
 
@@ -59,6 +59,7 @@ def process_video_comments(db: MongoClient, video_id: str, access_token: str) ->
 def get_instagram_comments(**kwargs: Dict[str, Any]) -> None:
     parser_name = 'Instagram Comments'
     status = 'success'
+    platform = 'instagram'
     start_time = pendulum.now()
     log_parser_start(parser_name)
 

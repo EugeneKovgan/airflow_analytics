@@ -15,6 +15,7 @@ from typing import Any, Dict
 def get_tiktok_posts_stats(**kwargs: Dict[str, Any]) -> None:
     parser_name = 'Tiktok Posts'
     status = 'success'
+    platform = 'tiktok'
     start_time = pendulum.now()
     log_parser_start(parser_name)
     
@@ -74,17 +75,17 @@ def get_tiktok_posts_stats(**kwargs: Dict[str, Any]) -> None:
                 if video_id not in video_ids:
                     post = {
                         "_id": video_id,
+                        "platform": platform,
                         "recordCreated": pendulum.now(),
                         "tags": None,
                         "video": video,
-                        "platform": "tiktok",
                     }
                     posts_collection.insert_one(post)
                     print(f"New Video Discovered from {pendulum.from_timestamp(video['createTime'])} of {video['video']['duration']}s {video.get('desc')}")
                 else:
                     posts_collection.update_one(
                         {"_id": video_id},
-                        {"$set": {"video": video, "recordCreated": pendulum.now()}}
+                        {"$set": {"platform": platform, "recordCreated": pendulum.now(), "video": video, }}
                     )
 
                 counter_analytics = 3
