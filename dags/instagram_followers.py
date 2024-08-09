@@ -1,7 +1,3 @@
-import sys
-import os
-sys.path.append('/mnt/e/Symfa/airflow_analytics')
-
 from airflow import DAG
 from airflow.operators.python import PythonOperator
 from airflow.utils.dates import days_ago
@@ -59,9 +55,15 @@ def get_instagram_followers_stats(**kwargs: Dict[str, Any]) -> None:
 
         followers_collection.insert_one({
             "data": data,
-            "platform": platform,
             "recordCreated": pendulum.now(),
+            "platform": platform,
         })
+
+        # Update existing documents to add the 'platform' field if it is missing
+        followers_collection.update_many(
+            {"platform": {"$exists": False}},
+            {"$set": {"platform": platform}}
+        )
 
     except Exception as error:
         status = handle_parser_error(error, parser_name)

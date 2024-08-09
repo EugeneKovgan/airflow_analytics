@@ -1,7 +1,3 @@
-import sys
-import os
-sys.path.append('/mnt/e/Symfa/airflow_analytics')
-
 from airflow import DAG
 from airflow.operators.python import PythonOperator
 from airflow.utils.dates import days_ago
@@ -58,10 +54,17 @@ def fetch_tiktok_followers_data(user: Any, parser_name: str) -> dict:
 
 def save_followers_data(db: Any, data: dict, platform: str) -> None:
     followers_collection = db['tiktok_followers']
+
+    result = followers_collection.update_many(
+        {"platform": {"$exists": False}},
+        {"$set": {"platform": platform}}
+    )
+    print(f"Documents updated: {result.modified_count}")
+
     followers_collection.insert_one({
         'data': data,
-        'platform': platform,
         'recordCreated': pendulum.now(),
+        'platform': platform,
     })
     print(f"Saving followers data: {data}")
 

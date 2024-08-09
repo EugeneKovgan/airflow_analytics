@@ -1,7 +1,3 @@
-import sys
-import os
-sys.path.append('/mnt/e/Symfa/airflow_analytics')
-
 from airflow import DAG
 from airflow.operators.python import PythonOperator
 from airflow.utils.dates import days_ago
@@ -45,8 +41,7 @@ def accumulate_stats(target, source):
 
 def empty_stats(time):
     platform = 'tiktok'    
-    return {
-        'platform': platform,
+    return {        
         "postId": '',
         "date": '',
         "collect_count": 0,
@@ -64,6 +59,7 @@ def empty_stats(time):
         "total_duration": 0,
         "video_duration": 0,
         "followers": 0,
+        "platform": platform,
     }
 
 def calculate_post(analytics_records, post_id, video_create_time):
@@ -124,9 +120,14 @@ def calculate_post(analytics_records, post_id, video_create_time):
         day_stats['date'] = current_date.format('YYYY-MM-DD')
         
         day_stats['recordCreated'] = {
-            "_i": int(current_date.timestamp() * 1000),  
-            "_d": current_date
+            "_i": int(pendulum.instance(stats['recordCreated']).timestamp() * 1000),
+            "_d": pendulum.instance(stats['recordCreated'])
         }
+        
+        # day_stats['recordCreated'] = {
+        #     "_i": int(current_date.timestamp() * 1000),  
+        #     "_d": current_date
+        # }
         
         daily_analytics.append(day_stats)
 

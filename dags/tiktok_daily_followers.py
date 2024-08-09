@@ -1,7 +1,3 @@
-import sys
-import os
-sys.path.append('/mnt/e/Symfa/airflow_analytics')
-
 from airflow import DAG
 from airflow.operators.python import PythonOperator
 from airflow.utils.dates import days_ago
@@ -23,6 +19,12 @@ def recalculate_tiktok_daily_followers():
         daily_followers_collection = db['tiktok_daily_followers']
         posts_stats_collection = db['tiktok_daily_stats']
         collection_names = db.list_collection_names()
+
+        # Ensure 'platform' field is set for all documents in 'tiktok_followers' collection
+        followers_stats_collection.update_many(
+            {"platform": {"$exists": False}},
+            {"$set": {"platform": platform}}
+        )
 
         if 'tiktok_daily_followers' in collection_names:
             daily_followers_collection.drop()
@@ -64,8 +66,8 @@ def recalculate_tiktok_daily_followers():
 
             days.append({
                 '_id': date.to_date_string(),
-                'platform': platform,
                 'followers': day_accumulator,
+                'platform': platform,
             })
 
             total_followers += day_accumulator
@@ -115,10 +117,10 @@ dag = DAG(
 ) 
 
 tiktok_daily_followers_task = PythonOperator(
-        task_id='recalculate_tiktok_daily_followers',
-        python_callable=recalculate_tiktok_daily_followers,
-        provide_context=True,
-        dag=dag,
+    task_id='recalculate_tiktok_daily_followers',
+    python_callable=recalculate_tiktok_daily_followers,
+    provide_context=True,
+    dag=dag,
 )
 
 tiktok_daily_followers_task

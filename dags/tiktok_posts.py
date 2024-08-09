@@ -1,7 +1,3 @@
-import sys
-import os
-sys.path.append('/mnt/e/Symfa/airflow_analytics')
-
 from airflow import DAG
 from airflow.operators.python import PythonOperator
 from airflow.utils.dates import days_ago
@@ -28,14 +24,20 @@ def get_tiktok_posts_stats(**kwargs: Dict[str, Any]) -> None:
         posts_collection = db['tiktok_posts']
         posts_stats_collection = db['tiktok_posts_stats']
 
+        result = posts_collection.update_many(
+            {"platform": {"$exists": False}},
+            {"$set": {"platform": platform}}
+        )
+        print(f"Documents updated: {result.modified_count}")
+
         i = 0
         size = 100
         while True:
             ids = list(posts_collection.find({}, {"_id": 1}).skip(i * size).limit(size))
             i += 1
             if ids:
-                for id in ids:
-                    video_ids.add(str(id["_id"]))
+                for id_doc in ids:
+                    video_ids.add(str(id_doc["_id"]))
             else:
                 break
 
@@ -75,17 +77,17 @@ def get_tiktok_posts_stats(**kwargs: Dict[str, Any]) -> None:
                 if video_id not in video_ids:
                     post = {
                         "_id": video_id,
-                        "platform": platform,
                         "recordCreated": pendulum.now(),
                         "tags": None,
                         "video": video,
+                        "platform": platform,
                     }
                     posts_collection.insert_one(post)
                     print(f"New Video Discovered from {pendulum.from_timestamp(video['createTime'])} of {video['video']['duration']}s {video.get('desc')}")
                 else:
                     posts_collection.update_one(
                         {"_id": video_id},
-                        {"$set": {"platform": platform, "recordCreated": pendulum.now(), "video": video, }}
+                        {"$set": {"recordCreated": pendulum.now(), "video": video, "platform": platform }}
                     )
 
                 counter_analytics = 3

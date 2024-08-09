@@ -1,7 +1,3 @@
-import sys
-import os
-sys.path.append('/mnt/e/Symfa/airflow_analytics')
-
 from airflow import DAG
 from airflow.operators.python import PythonOperator
 from airflow.utils.dates import days_ago
@@ -19,6 +15,8 @@ from common.common_functions import (
 )
 from common.get_instagram_access_token import get_instagram_access_token
 
+platform = 'instagram'
+
 def fetch_video_ids(db: MongoClient) -> list:
     posts_collection = db['instagram_reels']
     return list(posts_collection.distinct('video.id'))
@@ -32,6 +30,7 @@ def process_video_comments(db: MongoClient, video_id: str, access_token: str) ->
     }
 
     comments_count = 0
+    
     while url:
         response = requests.get(url, params=params)
         response.raise_for_status()
@@ -45,10 +44,10 @@ def process_video_comments(db: MongoClient, video_id: str, access_token: str) ->
             if existing_comment:
                 comments_collection.update_one(
                     {'data.id': comment['id']},
-                    {"$set": {"data": comment, "recordUpdated": pendulum.now(), "platform": "instagram"}}
+                    {"$set": {"data": comment, "recordUpdated": pendulum.now(), "platform": platform}}
                 )
             else:
-                comments_collection.insert_one({"data": comment, "recordCreated": pendulum.now(), "platform": "instagram"})
+                comments_collection.insert_one({"data": comment, "recordCreated": pendulum.now(), "platform": platform,})
 
             comments_count += 1
 
@@ -59,7 +58,6 @@ def process_video_comments(db: MongoClient, video_id: str, access_token: str) ->
 def get_instagram_comments(**kwargs: Dict[str, Any]) -> None:
     parser_name = 'Instagram Comments'
     status = 'success'
-    platform = 'instagram'
     start_time = pendulum.now()
     log_parser_start(parser_name)
 
@@ -69,6 +67,13 @@ def get_instagram_comments(**kwargs: Dict[str, Any]) -> None:
     try:
         ig_access_token = get_instagram_access_token()
         video_ids = fetch_video_ids(db)
+
+        # Ensure all documents in comments_collection have 'platform' field
+        comments_collection = db['instagram_comments']
+        comments_collection.update_many(
+            {"platform": {"$exists": False}},
+            {"$set": {"platform": platform}}
+        )
 
         for video_id in video_ids:
             try:

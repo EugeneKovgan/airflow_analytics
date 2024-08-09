@@ -1,7 +1,3 @@
-import sys
-import os
-sys.path.append('/mnt/e/Symfa/airflow_analytics')
-
 from airflow import DAG
 from airflow.operators.python import PythonOperator
 from airflow.utils.dates import days_ago
@@ -80,25 +76,30 @@ def process_comment(user: Any, comments_collection: Any, comment: Any, platform:
         reply_comments = fetch_reply_comments(user, comment) if comment.get('reply_comment_total', 0) > 0 else []
         comments_collection.insert_one({
             'data': comment,
-            'platform': platform,
             'recordCreated': pendulum.now(),
             'reply': reply_comments,
+            'platform': platform,
         })
         return 1
     else:
+        updated_reply_comments = existing_comment.get('reply', [])
         if existing_comment['data'].get('reply_comment_total') != comment.get('reply_comment_total'):
             updated_reply_comments = fetch_reply_comments(user, comment) if comment.get('reply_comment_total', 0) > 0 else []
-            comments_collection.replace_one(
-                { 'data.cid': comment['cid'] },
-                {
-                    'data': comment,
-                    'platform': platform,
-                    'recordCreated': pendulum.now(),
-                    'reply': updated_reply_comments,
-                },
-            )
-        else:
-            print(f"Skipping update for comment with cid {comment['cid']}. reply_comment_total has not changed.")
+
+        update_fields = {
+            'data': comment,
+            'recordCreated': pendulum.now(),
+            'reply': updated_reply_comments,
+        }
+
+        if 'platform' not in existing_comment:
+            update_fields['platform'] = platform
+
+        comments_collection.replace_one(
+            { 'data.cid': comment['cid'] },
+            update_fields,
+        )
+
         return 0
 
 def fetch_reply_comments(user: Any, comment: Any) -> List[Dict[str, Any]]:

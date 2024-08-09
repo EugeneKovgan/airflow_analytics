@@ -1,7 +1,3 @@
-import sys
-import os
-sys.path.append('/mnt/e/Symfa/airflow_analytics')
-
 from airflow import DAG
 from airflow.operators.python import PythonOperator
 from airflow.utils.dates import days_ago
@@ -46,7 +42,6 @@ def accumulate_stats(target, source):
 def empty_stats(time):
     platform = 'instagram'
     return {
-        'platform': platform,
         "postId": "",
         "date": "",
         "collect_count": 0,
@@ -64,6 +59,7 @@ def empty_stats(time):
         "total_duration": 0,
         "video_duration": 0,
         "followers": 0,
+        "platform": platform,
     }
 
 def calculate_post(analytics_records, post_id, video_create_time):
@@ -77,7 +73,7 @@ def calculate_post(analytics_records, post_id, video_create_time):
     previous = empty_stats(time)
 
     volume_before_first_record = diff_stats(stats, empty_stats(time))
-    days_before_first_round = (pendulum.instance(stats['recordCreated']) - time).days
+    days_before_first_round = (pendulum.instance(stats['recordCreated']).in_tz('UTC') - time).days
 
     def get_daily_speed(day):
         coeff = get_coefficient(day, days_before_first_round)
@@ -95,7 +91,7 @@ def calculate_post(analytics_records, post_id, video_create_time):
         inside_previous = empty_stats(previous['recordCreated'])
         accumulate_stats(inside_previous, previous)
 
-        while stats and pendulum.instance(stats['recordCreated']) < next_date and analytics_records:
+        while stats and pendulum.instance(stats['recordCreated']).in_tz('UTC') < next_date and analytics_records:
             diff = diff_stats(stats, inside_previous)
             accumulate_stats(day_stats, diff)
             if analytics_records:
@@ -109,9 +105,9 @@ def calculate_post(analytics_records, post_id, video_create_time):
             accumulate_stats(day_stats, proportion1)
             accumulate_stats(day_stats, proportion2)
         else:
-            if stats and (next_date - pendulum.instance(stats['recordCreated'])).days < 24:
+            if stats and (next_date - pendulum.instance(stats['recordCreated']).in_tz('UTC')).days < 24:
                 diff = diff_stats(stats, inside_previous)
-                whole_duration = (pendulum.instance(stats['recordCreated']) - inside_previous['recordCreated']).days
+                whole_duration = (pendulum.instance(stats['recordCreated']).in_tz('UTC') - inside_previous['recordCreated']).days
                 today_duration = (next_date - inside_previous['recordCreated']).days
                 if whole_duration > 0:
                     updated_stats = {k: v * (today_duration / whole_duration) for k, v in diff.items() if isinstance(v, (int, float))}
@@ -123,9 +119,8 @@ def calculate_post(analytics_records, post_id, video_create_time):
         day += 1
         day_stats['date'] = current_date.format('YYYY-MM-DD')
         day_stats['recordCreated'] = {
-            "_i": int(current_date.timestamp() * 1000), 
-            "_d": current_date 
-            # "_d": current_date.isoformat(),  
+            "_i": int(pendulum.instance(stats['recordCreated']).in_tz('UTC').timestamp() * 1000),
+            "_d": pendulum.instance(stats['recordCreated']).in_tz('UTC')
         }
         day_stats['postId'] = post_id
         daily_analytics.append(day_stats)
@@ -168,7 +163,7 @@ def recalculate_instagram_daily_stats(**kwargs: Dict[str, Any]) -> None:
             video_create_time = p['video']['createTime']
             analytics_records = list(posts_stats_collection.find({'postId': post_id}).sort('recordCreated', 1))
             for record in analytics_records:
-                record['statistics']['recordCreated'] = record['recordCreated']
+                record['statistics']['recordCreated'] = pendulum.instance(record['recordCreated']).in_tz('UTC')
                 record['statistics']['videoCreateTime'] = video_create_time
                 record['statistics']['digg_count'] = record['statistics'].get('like_count', 0)
                 record['statistics']['forward_count'] = 0

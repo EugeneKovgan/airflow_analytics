@@ -1,7 +1,3 @@
-import sys
-import os
-sys.path.append('/mnt/e/Symfa/airflow_analytics')
-
 from airflow import DAG
 from airflow.operators.python import PythonOperator
 from airflow.utils.dates import days_ago
@@ -50,7 +46,7 @@ def get_instagram_reels_stats(**kwargs: Dict[str, Any]) -> None:
         }
 
         followers_response = requests.get(followers_url, params=followers_params)
-        print(followers_response.json())  # Добавьте это для отладки
+        print(followers_response.json())
         if followers_response.status_code != 200:
             raise Exception(f"API request for followers count failed with status {followers_response.status_code}: {followers_response.json()}")
 
@@ -58,6 +54,12 @@ def get_instagram_reels_stats(**kwargs: Dict[str, Any]) -> None:
         followers_count = followers_data.get('followers_count', 0)
         profile_picture_id = followers_data.get('id', '')
         profile_picture_url = followers_data.get('profile_picture_url', '')
+
+        result = reels_collection.update_many(
+            {"platform": {"$exists": False}},
+            {"$set": {"platform": platform}}
+        )
+        print(f"Documents updated: {result.modified_count}")
 
         # Fetch all saved ids from the database for performance
         i = 0
@@ -109,18 +111,19 @@ def get_instagram_reels_stats(**kwargs: Dict[str, Any]) -> None:
                     
                     update_data = {
                         "$setOnInsert": {
-                            "platform": platform
+                            "recordCreated": pendulum.now()
                         },
                         "$set": {
-                            "recordCreated": pendulum.now(),
                             "tags": None,
                             "video": new_reel_post["video"]
                         }
                     }
                     reels_collection.update_one({"_id": id}, update_data, upsert=True)
+
+                    reels_collection.update_one({"_id": id}, {"$set": {"platform": platform}})
                     print(f"Video Processed: {new_reel_post['video']['desc']}")
 
-                    # Insert reel stats
+                    # Вставляем статистику роликов
                     reels_stats_collection.insert_one({
                         "postId": id,
                         "recordCreated": pendulum.now(),
@@ -142,6 +145,11 @@ def get_instagram_reels_stats(**kwargs: Dict[str, Any]) -> None:
                             "profile_picture_url": reel.get('profile_picture_url', ''),
                         }
                     })
+
+                    reels_stats_collection.update_one(
+                        {"postId": id, "platform": {"$exists": False}},
+                        {"$set": {"platform": platform}}
+                    )
 
             # Check if there's a next page
             if 'paging' in media and 'next' in media['paging']:
@@ -165,6 +173,7 @@ def get_instagram_reels_stats(**kwargs: Dict[str, Any]) -> None:
             )
         close_mongo_connection(db.client)
         log_parser_finish(parser_name)
+
 
 def parse_reels_data(media, access_token):
     data = []
