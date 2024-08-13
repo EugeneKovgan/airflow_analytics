@@ -1,8 +1,11 @@
+import sys
+sys.path.append('/mnt/e/Symfa/airflow_analytics')
+
 from airflow import DAG
 from airflow.operators.python import PythonOperator
 from airflow.utils.dates import days_ago
 import pendulum
-from typing import Any, Dict
+from typing import Any, Dict, List
 from common.common_functions import (
     close_mongo_connection,
     log_parser_finish,
@@ -12,6 +15,7 @@ from common.common_functions import (
     get_mongo_client,
 )
 
+# Coefficient calculation
 def get_coefficient(day: int, days_before_first_round: int) -> float:
     if day == 0:
         return 0
@@ -25,7 +29,8 @@ def get_coefficient(day: int, days_before_first_round: int) -> float:
         return 0.25 / (days_before_first_round - 3)
     return 0
 
-def diff_stats(stats, empty):
+# Difference calculation between stats
+def diff_stats(stats: Dict, empty: Dict) -> Dict:
     diff = {}
     for k in empty.keys():
         if isinstance(stats.get(k, 0), (int, float)) and isinstance(empty.get(k, 0), (int, float)):
@@ -34,16 +39,25 @@ def diff_stats(stats, empty):
             diff[k] = stats.get(k, 0)
     return diff
 
-def accumulate_stats(target, source):
+# Accumulate stats
+def accumulate_stats(target: Dict, source: Dict):
     for key in target:
         if isinstance(target[key], (int, float)) and isinstance(source.get(key, 0), (int, float)):
             target[key] += source.get(key, 0)
 
-def empty_stats(time):
+# Multiply stats by a coefficient
+def multiply_stats(s: Dict, multiplier: float) -> Dict:
+    for key in s:
+        if isinstance(s[key], (int, float)):
+            s[key] *= multiplier
+    return s
+
+# Empty stats template
+def empty_stats(time, post_id: str) -> Dict:
     platform = 'instagram'
     return {
-        "postId": "",
-        "date": "",
+        "postId": post_id,
+        "date": time.format('YYYY-MM-DD'),
         "collect_count": 0,
         "comment_count": 0,
         "digg_count": 0,
@@ -56,39 +70,55 @@ def empty_stats(time):
         "whatsapp_share_count": 0,
         "finish_rate": 0,
         "recordCreated": time,
+        "videoCreateTime":time,
         "total_duration": 0,
         "video_duration": 0,
         "followers": 0,
         "platform": platform,
     }
 
-def calculate_post(analytics_records, post_id, video_create_time):
+# Main function to calculate post statistics
+def calculate_post(analytics_records: List[Dict], post_id: str) -> List[Dict]:
     now = pendulum.now()
     today = now.start_of('day')
     stats = analytics_records.pop(0) if analytics_records else None
     if not stats:
         return []
 
-    time = pendulum.from_timestamp(video_create_time)
-    previous = empty_stats(time)
+    time = pendulum.from_timestamp(stats['videoCreateTime'])
 
-    volume_before_first_record = diff_stats(stats, empty_stats(time))
-    days_before_first_round = (pendulum.instance(stats['recordCreated']).in_tz('UTC') - time).days
+    previous = empty_stats(time, post_id)
+
+    volume_before_the_first_record = diff_stats(stats, empty_stats(time, post_id))
+    days_before_the_first_round = stats['recordCreated'].diff(time).in_days()
 
     def get_daily_speed(day):
-        coeff = get_coefficient(day, days_before_first_round)
-        return {k: v * coeff for k, v in volume_before_first_record.items() if isinstance(v, (int, float))}
+        coeff = get_coefficient(day, days_before_the_first_round)
+        return {
+            "collect_count": volume_before_the_first_record['collect_count'] * coeff,
+            "comment_count": volume_before_the_first_record['comment_count'] * coeff,
+            "digg_count": volume_before_the_first_record['digg_count'] * coeff,
+            "download_count": volume_before_the_first_record['download_count'] * coeff,
+            "forward_count": volume_before_the_first_record['forward_count'] * coeff,
+            "lose_comment_count": volume_before_the_first_record['lose_comment_count'] * coeff,
+            "lose_count": volume_before_the_first_record['lose_count'] * coeff,
+            "play_count": volume_before_the_first_record['play_count'] * coeff,
+            "share_count": volume_before_the_first_record['share_count'] * coeff,
+            "whatsapp_share_count": volume_before_the_first_record['whatsapp_share_count'] * coeff,
+            "finish_rate": volume_before_the_first_record['finish_rate'],
+            "total_duration": volume_before_the_first_record['total_duration'],
+        }
 
-    virtual = days_before_first_round > 3
+    virtual = days_before_the_first_round > 3
     day = 1
-
     daily_analytics = []
+
     while time < today:
-        day_stats = empty_stats(time)
+        day_stats = empty_stats(time, post_id)
         current_date = time.start_of('day')
         next_date = current_date.add(days=1)
 
-        inside_previous = empty_stats(previous['recordCreated'])
+        inside_previous = empty_stats(previous['recordCreated'], post_id)
         accumulate_stats(inside_previous, previous)
 
         while stats and pendulum.instance(stats['recordCreated']).in_tz('UTC') < next_date and analytics_records:
@@ -100,33 +130,45 @@ def calculate_post(analytics_records, post_id, video_create_time):
             virtual = False
 
         if virtual:
-            proportion1 = get_daily_speed(day - 1)
-            proportion2 = get_daily_speed(day)
+            proportion1 = multiply_stats(get_daily_speed(day - 1), day == 1 and time.diff(current_date).in_days())
+            proportion2 = multiply_stats(get_daily_speed(day), next_date.diff(time).in_days())
             accumulate_stats(day_stats, proportion1)
             accumulate_stats(day_stats, proportion2)
         else:
-            if stats and (next_date - pendulum.instance(stats['recordCreated']).in_tz('UTC')).days < 24:
+            if stats and (next_date - pendulum.instance(stats['recordCreated']).in_tz('UTC')).in_hours() < 24:
                 diff = diff_stats(stats, inside_previous)
-                whole_duration = (pendulum.instance(stats['recordCreated']).in_tz('UTC') - inside_previous['recordCreated']).days
-                today_duration = (next_date - inside_previous['recordCreated']).days
-                if whole_duration > 0:
-                    updated_stats = {k: v * (today_duration / whole_duration) for k, v in diff.items() if isinstance(v, (int, float))}
-                    accumulate_stats(day_stats, updated_stats)
+                whole_duration = stats['recordCreated'].diff(inside_previous['recordCreated']).in_days()
+                today_duration = next_date.diff(inside_previous['recordCreated']).in_days()
+                
+                if whole_duration != 0:
+                    accumulate_stats(day_stats, multiply_stats(diff, today_duration / whole_duration))
 
         accumulate_stats(previous, day_stats)
         previous['recordCreated'] = next_date
         time = time.add(days=1)
         day += 1
         day_stats['date'] = current_date.format('YYYY-MM-DD')
-        day_stats['recordCreated'] = {
-            "_i": int(pendulum.instance(stats['recordCreated']).in_tz('UTC').timestamp() * 1000),
-            "_d": pendulum.instance(stats['recordCreated']).in_tz('UTC')
-        }
         day_stats['postId'] = post_id
+
+        video_create_time = stats['videoCreateTime']
+
+        if isinstance(video_create_time, int):
+            video_create_time_ms = video_create_time * 1000
+        else:
+            video_create_time_ms = int(pendulum.parse(video_create_time).timestamp() * 1000)
+
+        day_stats['recordCreated'] = {
+            "_i": video_create_time_ms,
+            "_d": pendulum.now('UTC'),
+            "_i_": int(pendulum.instance(stats['recordCreated']).timestamp() * 1000),
+            "_d_": current_date,
+        }  
+
         daily_analytics.append(day_stats)
 
     return daily_analytics
 
+# Main DAG function
 def recalculate_instagram_daily_stats(**kwargs: Dict[str, Any]) -> None:
     parser_name = 'Instagram Daily Stats'
     status = 'success'
@@ -162,6 +204,11 @@ def recalculate_instagram_daily_stats(**kwargs: Dict[str, Any]) -> None:
             post_id = p['_id']
             video_create_time = p['video']['createTime']
             analytics_records = list(posts_stats_collection.find({'postId': post_id}).sort('recordCreated', 1))
+            
+            # Log each post before processing
+            print(f"Processing post: {post_id}")
+            # print(f"Analytics Records: {analytics_records}")
+
             for record in analytics_records:
                 record['statistics']['recordCreated'] = pendulum.instance(record['recordCreated']).in_tz('UTC')
                 record['statistics']['videoCreateTime'] = video_create_time
@@ -174,7 +221,7 @@ def recalculate_instagram_daily_stats(**kwargs: Dict[str, Any]) -> None:
                 record['statistics']['lose_count'] = 0
                 record['statistics']['whatsapp_share_count'] = 0
 
-            analytics = calculate_post([r['statistics'] for r in analytics_records], post_id, video_create_time)
+            analytics = calculate_post([r['statistics'] for r in analytics_records], post_id)
             if analytics:
                 for a in analytics:
                     a['postId'] = post_id
@@ -206,6 +253,7 @@ def recalculate_instagram_daily_stats(**kwargs: Dict[str, Any]) -> None:
             close_mongo_connection(db.client)
         log_parser_finish(parser_name)
 
+# Default arguments for DAG
 default_args = {
     'owner': 'airflow',
     'depends_on_past': False,
@@ -213,15 +261,17 @@ default_args = {
     'email_on_retry': False,
 }
 
+# Define the DAG
 dag = DAG(
     'instagram_daily_stats',
     default_args=default_args,
     description='Recalculate Instagram daily stats and save to MongoDB',
-    schedule_interval='0 23 * * *',  # Cron expression for scheduling
+    schedule_interval='0 23 * * *',
     start_date=days_ago(1),
-    catchup=False, 
+    catchup=False,
 )
 
+# Define the Python task in the DAG
 recalculate_instagram_daily_stats_task = PythonOperator(
     task_id='recalculate_instagram_daily_stats',
     python_callable=recalculate_instagram_daily_stats,
@@ -229,4 +279,5 @@ recalculate_instagram_daily_stats_task = PythonOperator(
     dag=dag,
 )
 
+# Assign the task to the DAG
 recalculate_instagram_daily_stats_task

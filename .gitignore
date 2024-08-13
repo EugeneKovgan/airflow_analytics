@@ -1,5 +1,8 @@
 logs/
 .env
 *.log
+dags/__pycache__
+common/__pycache__
+
 
 airflow_venv/

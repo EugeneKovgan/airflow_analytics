@@ -1,3 +1,6 @@
+import sys
+sys.path.append('/mnt/e/Symfa/airflow_analytics')
+
 from airflow import DAG
 from airflow.operators.python import PythonOperator
 from airflow.utils.dates import days_ago
