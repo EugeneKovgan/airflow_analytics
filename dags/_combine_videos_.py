@@ -66,7 +66,7 @@ default_args = {
 }
 
 dag = DAG(
-    'combine_videos',
+    '_combine_videos_',
     default_args=default_args,
     description='A DAG to combine three collections from remote MongoDB with platform field and save to a new collection in the same remote MongoDB',
     schedule_interval=None,

@@ -94,7 +94,7 @@ default_args = {
 }
 
 dag = DAG(
-    'instagram_followers',
+    '_instagram_followers_',
     default_args=default_args,
     description='Fetch Instagram followers stats and save to MongoDB',
     schedule_interval='30 8,15,21 * * *',  # Cron expression for scheduling

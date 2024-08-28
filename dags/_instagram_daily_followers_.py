@@ -7,38 +7,38 @@ from airflow.utils.dates import days_ago
 from common.common_functions import close_mongo_connection, get_mongo_client, handle_parser_error, log_parser_finish, log_parser_start, save_parser_history
 import pendulum
 
-def recalculate_tiktok_daily_followers():
-    parser_name = 'Tiktok Daily Followers'
+def recalculate_instagram_daily_followers():
+    parser_name = 'Instagram Daily Followers'
     status = 'success'
+    platform = 'instagram'
     start_time = pendulum.now()
     log_parser_start(parser_name)
-    platform = 'tiktok'
 
     db = get_mongo_client()
     total_followers = 0
 
-    try:       
-        followers_stats_collection = db['tiktok_followers']
-        daily_followers_collection = db['tiktok_daily_followers']
-        posts_stats_collection = db['tiktok_daily_stats']
+    try:
+        followers_stats_collection = db['instagram_followers']
+        daily_followers_collection = db['instagram_daily_followers']
+        posts_stats_collection = db['instagram_daily_stats']
         collection_names = db.list_collection_names()
-
+        
         # Ensure 'platform' field is set for all documents in 'tiktok_followers' collection
         followers_stats_collection.update_many(
             {"platform": {"$exists": False}},
             {"$set": {"platform": platform}}
         )
 
-        if 'tiktok_daily_followers' in collection_names:
+        if 'instagram_daily_followers' in collection_names:
             daily_followers_collection.drop()
 
         followers_stats = list(followers_stats_collection.find({}).sort('recordCreated', 1))
         if not followers_stats:
             raise ValueError("No followers stats found.")
-        
+
         first_record = followers_stats[0]
-        first_num = first_record['data']['follower_num']['value']
-        first_date = pendulum.parse(str(first_record['recordCreated']))  
+        first_num = first_record['data']['followers_count']
+        first_date = pendulum.parse(str(first_record['recordCreated']))
 
         previous_stat_num = first_num
         previous_stat_date = first_date
@@ -54,7 +54,7 @@ def recalculate_tiktok_daily_followers():
             current_stat = next((stat for stat in followers_stats if pendulum.parse(str(stat['recordCreated'])).is_same_day(date)), None)
 
             if current_stat:
-                current_stat_num = current_stat['data']['follower_num']['value']
+                current_stat_num = current_stat['data']['followers_count']
                 day_accumulator = current_stat_num - overall_accumulator
                 overall_accumulator = current_stat_num
                 previous_stat_date = pendulum.parse(str(current_stat['recordCreated']))
@@ -74,7 +74,6 @@ def recalculate_tiktok_daily_followers():
             })
 
             total_followers += day_accumulator
-            print(f"Date: {date.to_date_string()}, Followers: {day_accumulator}")
 
         post_days = list(posts_stats_collection.aggregate([
             {'$match': {'date': {'$lt': first_date.to_date_string()}}},
@@ -111,19 +110,19 @@ default_args = {
 }
 
 dag = DAG(
-    'tiktok_daily_followers',
+    '_instagram_daily_followers_',
     default_args=default_args,
-    description='Recalculate TikTok daily followers and save to MongoDB',
-    schedule_interval='25 3,7,11,15,19 * * *',  # Cron expression for scheduling
+    description='Recalculate Instagram daily followers',
+    schedule_interval='25 8,15,21 * * *', # Cron expression for scheduling
     start_date=days_ago(1),
     catchup=False,
 ) 
 
-tiktok_daily_followers_task = PythonOperator(
-    task_id='recalculate_tiktok_daily_followers',
-    python_callable=recalculate_tiktok_daily_followers,
+instagram_daily_followers_task = PythonOperator(
+    task_id='recalculate_instagram_daily_followers',
+    python_callable=recalculate_instagram_daily_followers,
     provide_context=True,
     dag=dag,
 )
 
-tiktok_daily_followers_task
+instagram_daily_followers_task

@@ -1,6 +1,3 @@
-import sys
-sys.path.append('/mnt/e/Symfa/airflow_analytics')
-
 from airflow import DAG
 from airflow.operators.python import PythonOperator
 from airflow.utils.dates import days_ago
@@ -186,8 +183,8 @@ def recalculate_instagram_daily_stats(**kwargs: Dict[str, Any]) -> None:
         if not db:
             raise ValueError("Failed to connect to MongoDB")
         print("Successfully connected to MongoDB")
-
-        posts_collection = db['instagram_reels']
+        # posts_collection = db['instagram_reels']
+        posts_collection = db['videos']
         posts_stats_collection = db['instagram_reels_stats']
         daily_stats_collection = db['instagram_daily_stats']
         collections = db.list_collection_names()
@@ -197,7 +194,10 @@ def recalculate_instagram_daily_stats(**kwargs: Dict[str, Any]) -> None:
         daily_followers_map = {x['_id']: x['followers'] for x in daily_followers_stats}
         daily_views_map = {}
 
-        posts = list(posts_collection.find({}))
+        # Filter posts by platform 'instagram'
+        # posts = list(posts_collection.find({}))
+        # data['videos'] = len(posts)
+        posts = list(posts_collection.find({"platform": "instagram"}))
         data['videos'] = len(posts)
 
         for p in posts:
@@ -228,9 +228,10 @@ def recalculate_instagram_daily_stats(**kwargs: Dict[str, Any]) -> None:
                     if a['date'] not in daily_views_map:
                         daily_views_map[a['date']] = []
                     daily_views_map[a['date']].append(a)
-
+        # if 'instagram_daily_stats' in collections:
+        #     daily_stats_collection.drop()
         if 'instagram_daily_stats' in collections:
-            daily_stats_collection.drop()
+            daily_stats_collection.delete_many({"platform": "instagram"})  # Delete only Instagram data
 
         for day in daily_views_map:
             day_videos = daily_views_map[day]

@@ -1,5 +1,4 @@
 import sys
-import os
 sys.path.append('/mnt/e/Symfa/airflow_analytics')
 
 from airflow import DAG

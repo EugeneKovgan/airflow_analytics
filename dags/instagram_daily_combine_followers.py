@@ -7,8 +7,8 @@ from airflow.utils.dates import days_ago
 from common.common_functions import close_mongo_connection, get_mongo_client, handle_parser_error, log_parser_finish, log_parser_start, save_parser_history
 import pendulum
 
-def recalculate_instagram_daily_followers():
-    parser_name = 'Instagram Daily Followers'
+def recalculate_instagram_daily_followers_combine():
+    parser_name = 'Instagram Daily Followers Combine'
     status = 'success'
     platform = 'instagram'
     start_time = pendulum.now()
@@ -18,17 +18,17 @@ def recalculate_instagram_daily_followers():
     total_followers = 0
 
     try:
-        followers_stats_collection = db['instagram_followers']
-        daily_followers_collection = db['instagram_daily_followers']
+        followers_stats_collection = db['followers'] 
+        daily_followers_collection = db['instagram_daily_followers'] 
         posts_stats_collection = db['instagram_daily_stats']
         collection_names = db.list_collection_names()
 
-        if 'instagram_daily_followers' in collection_names:
-            daily_followers_collection.drop()
+        if 'daily_followers' in collection_names:
+            daily_followers_collection.delete_many({"platform": platform})
 
-        followers_stats = list(followers_stats_collection.find({}).sort('recordCreated', 1))
+        followers_stats = list(followers_stats_collection.find({"platform": platform}).sort('recordCreated', 1))
         if not followers_stats:
-            raise ValueError("No followers stats found.")
+            raise ValueError("No followers stats found for Instagram.")
 
         first_record = followers_stats[0]
         first_num = first_record['data']['followers_count']
@@ -64,7 +64,7 @@ def recalculate_instagram_daily_followers():
             days.append({
                 '_id': date.to_date_string(),
                 'followers': day_accumulator,
-                'platform': platform,
+                'platform': platform,  
             })
 
             total_followers += day_accumulator
@@ -83,6 +83,7 @@ def recalculate_instagram_daily_followers():
             days.insert(0, {
                 '_id': day['_id'],
                 'followers': followers_for_day,
+                'platform': platform,  
             })
             total_followers += followers_for_day
 
@@ -103,19 +104,19 @@ default_args = {
 }
 
 dag = DAG(
-    'instagram_daily_followers',
+    'instagram_daily_followers_combine',
     default_args=default_args,
     description='Recalculate Instagram daily followers',
-    schedule_interval='25 8,15,21 * * *', # Cron expression for scheduling
+    schedule_interval='25 8,15,21 * * *',  # Cron expression for scheduling
     start_date=days_ago(1),
     catchup=False,
 ) 
 
-instagram_daily_followers_task = PythonOperator(
-    task_id='recalculate_instagram_daily_followers',
-    python_callable=recalculate_instagram_daily_followers,
+instagram_daily_followers_combine_task = PythonOperator(
+    task_id='recalculate_instagram_daily_followers_combine',
+    python_callable=recalculate_instagram_daily_followers_combine,
     provide_context=True,
     dag=dag,
 )
 
-instagram_daily_followers_task
+instagram_daily_followers_combine_task

@@ -19,8 +19,8 @@ from common.common_functions import (
 from airflow.models import Variable
 from common.get_instagram_access_token import get_instagram_access_token
 
-def get_instagram_reels_stats(**kwargs: Dict[str, Any]) -> None:
-    parser_name = 'Instagram Reels Stats'
+def get_instagram_reels_combine_stats(**kwargs: Dict[str, Any]) -> None:
+    parser_name = 'Instagram Reels Combine Stats'
     status = 'success'
     platform = 'instagram'
     start_time = pendulum.now()
@@ -28,7 +28,7 @@ def get_instagram_reels_stats(**kwargs: Dict[str, Any]) -> None:
 
     reels_ids = set()
     db = get_mongo_client()
-    reels_collection = db['instagram_reels']
+    reels_collection = db['videos'] 
     reels_stats_collection = db['instagram_reels_stats']
     data = None
 
@@ -58,17 +58,10 @@ def get_instagram_reels_stats(**kwargs: Dict[str, Any]) -> None:
         profile_picture_id = followers_data.get('id', '')
         profile_picture_url = followers_data.get('profile_picture_url', '')
 
-        result = reels_collection.update_many(
-            {"platform": {"$exists": False}},
-            {"$set": {"platform": platform}}
-        )
-        print(f"Documents updated: {result.modified_count}")
-
-        # Fetch all saved ids from the database for performance
         i = 0
         size = 100
         while True:
-            ids = list(reels_collection.find({}, {"_id": 1}).skip(i * size).limit(size))
+            ids = list(reels_collection.find({"platform": platform}, {"_id": 1}).skip(i * size).limit(size))
             if not ids:
                 break
             for id_doc in ids:
@@ -109,7 +102,8 @@ def get_instagram_reels_stats(**kwargs: Dict[str, Any]) -> None:
                                 "id": profile_picture_id
                             },
                             "image_url": reel.get('media_url', '')
-                        }
+                        },
+                        "platform": platform  
                     }
                     
                     update_data = {
@@ -118,18 +112,18 @@ def get_instagram_reels_stats(**kwargs: Dict[str, Any]) -> None:
                         },
                         "$set": {
                             "tags": None,
-                            "video": new_reel_post["video"]
+                            "video": new_reel_post["video"],
+                            "platform": platform 
                         }
                     }
                     reels_collection.update_one({"_id": id}, update_data, upsert=True)
 
-                    reels_collection.update_one({"_id": id}, {"$set": {"platform": platform}})
                     print(f"Video Processed: {new_reel_post['video']['desc']}")
 
-                    # Вставляем статистику роликов
                     reels_stats_collection.insert_one({
                         "postId": id,
                         "recordCreated": pendulum.now(),
+                        "platform": platform, 
                         "statistics": {
                             "like_count": reel['like_count'],
                             "comment_count": reel['comments_count'],
@@ -148,11 +142,6 @@ def get_instagram_reels_stats(**kwargs: Dict[str, Any]) -> None:
                             "profile_picture_url": reel.get('profile_picture_url', ''),
                         }
                     })
-
-                    reels_stats_collection.update_one(
-                        {"postId": id, "platform": {"$exists": False}},
-                        {"$set": {"platform": platform}}
-                    )
 
             # Check if there's a next page
             if 'paging' in media and 'next' in media['paging']:
@@ -176,7 +165,6 @@ def get_instagram_reels_stats(**kwargs: Dict[str, Any]) -> None:
             )
         close_mongo_connection(db.client)
         log_parser_finish(parser_name)
-
 
 def parse_reels_data(media, access_token):
     data = []
@@ -204,18 +192,18 @@ default_args = {
 }
 
 dag = DAG(
-    'instagram_reels',
+    'instagram_reels_combine',
     default_args=default_args,
     description='Fetch Instagram Reels stats and save to MongoDB',
     schedule_interval='0 8,15,21 * * *',  # Cron expression for scheduling
     start_date=days_ago(1),
 )
 
-instagram_reels_stats_task = PythonOperator(
-    task_id='get_instagram_reels_stats',
-    python_callable=get_instagram_reels_stats,
+instagram_reels_combine_stats_task = PythonOperator(
+    task_id='get_instagram_reels_combine_stats',
+    python_callable=get_instagram_reels_combine_stats,
     provide_context=True,
     dag=dag,
 )
 
-instagram_reels_stats_task
+instagram_reels_combine_stats_task

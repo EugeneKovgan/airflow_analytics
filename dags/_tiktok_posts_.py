@@ -134,7 +134,7 @@ default_args = {
 }
 
 dag = DAG(
-    'tiktok_posts',
+    '_tiktok_posts_',
     default_args=default_args,
     description='Fetch TikTok posts stats and save to MongoDB',
     schedule_interval='0 3,7,11,15,19 * * *',  # Cron expression for scheduling

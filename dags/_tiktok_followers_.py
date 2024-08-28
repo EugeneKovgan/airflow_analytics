@@ -80,7 +80,7 @@ default_args = {
 }
 
 dag = DAG(
-    'tiktok_followers',
+    '_tiktok_followers_',
     default_args=default_args,
     description='Fetch TikTok followers stats and save to MongoDB',
     schedule_interval='30 3,7,11,15,19 * * *', # Cron expression for scheduling
